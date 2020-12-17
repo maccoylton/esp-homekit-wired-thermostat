@@ -1,0 +1,6 @@
+esp-homekit-wired-thermostat.xcodeproj/
+build/
+firmware/
+src/.DS_Store
+src/udplog-client
+.DS_Store
