@@ -1,5 +1,5 @@
 #ifndef TUYA_MCU
-#define YUYA_MCU
+#define TUYA_MCU
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>

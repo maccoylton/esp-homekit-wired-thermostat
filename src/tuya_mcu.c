@@ -134,7 +134,7 @@ void tuya_mcu_send_cmd(uint8_t cmd)
         /*        logger.addBytes("TX:", msg, msg.getLength());    }
          else
          {
-         /*        logger.addBytes("TX INVALID MSG:", msg, msg.getLength());
+            logger.addBytes("TX INVALID MSG:", msg, msg.getLength());
          */
     }
 }
@@ -160,7 +160,7 @@ void tuya_mcu_send_message(uint8_t cmd, uint8_t payload[], uint8_t payload_lengt
         /*        logger.addBytes("TX:", msg, msg.getLength());    }
          else
          {
-         /*        logger.addBytes("TX INVALID MSG:", msg, msg.getLength());
+                 logger.addBytes("TX INVALID MSG:", msg, msg.getLength());
          */
     }
 }

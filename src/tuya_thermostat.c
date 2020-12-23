@@ -1,9 +1,32 @@
 #include <espressif/esp_wifi.h>
 #include <sys/time.h>
 #include <espressif/esp_sta.h>
-
-#include <tuya_mcu.h>
 #include <tuya_thermostat.h>
+
+/* external variables */
+bool powerOn = false;
+float setPointTemp = 20.0f;
+float internalTemp = 0.0f;
+float externalTemp = 0.0f;
+thermostat_mode_t mode = 0;
+bool economyOn = false;
+bool locked = false;
+uint8_t schedule[54] = {0};
+
+/*variables used here */
+uint32_t currentByte = 0;
+uint32_t lastMS = 0;
+uint8_t dataLength = 0;
+uint8_t protocolVersion = 0;
+bool    resetBuffer = false;
+bool    sendWifiStateMsg = false;
+bool    gotHeartbeat = false;
+bool    gotProdKey = false;
+bool    gotWifiMode = false;
+bool    canQuery = false;
+bool haveSchedule = false;
+int scheduleCurrentDay = -1;
+int scheduleCurrentPeriod = -1;
 
 
 bool getTimeAvailable(){
@@ -12,7 +35,8 @@ bool getTimeAvailable(){
 }
 
 
-bool getTime(int dayOfWeek, int hour, int minutes)
+
+bool tuya_thermostat_getTime(int dayOfWeek, int hour, int minutes)
 {
     bool gotTime = false;
     struct tm* new_time = NULL;
@@ -36,7 +60,31 @@ bool getTime(int dayOfWeek, int hour, int minutes)
 }
 
 
-long long get_millis() {
+bool tuya_thermomstat_getTime(int dayOfWeek, int hour, int minutes)
+{
+    bool gotTime = false;
+    struct tm* new_time = NULL;
+    if (getTimeAvailable())
+    {
+        struct timezone tz = {0};
+        struct timeval tv = {0};
+        
+        gettimeofday(&tv, &tz);
+        time_t tnow = time(NULL);
+        
+        new_time = localtime(&tnow);
+        // sunday = 0, sat = 6
+        dayOfWeek = new_time->tm_wday;
+        hour = new_time->tm_hour;
+        minutes = new_time->tm_min;
+        
+        gotTime = true;
+    }
+    return gotTime;
+}
+
+
+long long tuya_thermostat_get_millis() {
     struct timeval te;
     gettimeofday(&te, NULL);
     return te.tv_sec * 1000LL + te.tv_usec / 1000;
@@ -61,7 +109,7 @@ void checkReset()
 
 bool msg_buffer_addbyte(uint8_t byte, uint8_t msg[])
 {
-    uint32_t newLastMS = get_millis();
+    uint32_t newLastMS = tuya_thermostat_get_millis();
     
     if (newLastMS - lastMS > 5)
         reset();
@@ -235,94 +283,97 @@ void tuya_thermostat_processRx()
 }
 
 
-void tuya_thermostat_loop()
+void tuya_thermostat_loop(void *args)
 {
-	tuya_thermostat_processRx();
-	tuya_thermostat_processTx(getTimeAvailable());
-
-	// update scheduleCurrentDay  and scheduleCurrentPeriod
-	if (getTimeAvailable())
-	{
-		uint32_t timeNow = get_millis();
-		uint32_t timeLastScheduleUpdate = timeNow+1;
-
-		if (timeNow - timeLastScheduleUpdate > 30000)
-		{
-			timeLastScheduleUpdate = timeNow;
-			int day = 0;
-			int hour = 0;
-			int mins = 0;
-			if (getTime(day, hour, mins))
-			{
-				// make monday first day
-				if (day == 0)
-					day = 7;
-				--day;
-
-				int period = -1;
-				SchedulePeriod_t p;
-				for (int i = 0 ; i < 6; ++i)
-				{
-					tuya_thermostat_getSchedulePeriod(day, i, &p);
-
-					if (hour < p.hour)
-					{
-						break;
-					}
-					else if (hour == p.hour && mins < p.minute)
-					{
-						break;
-					}
-					else
-					{
-						period = i;
-					}
-				}
-
-
-				if (-1 == period) // still on previous day schedule
-				{
-					if (day == 0)
-						day = 7;
-					--day;
-					period = 5;
-				}
-				if (day != scheduleCurrentDay || period != scheduleCurrentPeriod)
-				{
-					scheduleCurrentDay = day;
-					scheduleCurrentPeriod = period;
-					//emitChange(ChangeEvent::CHANGE_TYPE_CURRENT_SCHEDULE_PERIOD);
-				}
-			}
-		}
-	}
+    while (1) {
+        tuya_thermostat_processRx();
+        tuya_thermostat_processTx(getTimeAvailable());
+        
+        // update scheduleCurrentDay  and scheduleCurrentPeriod
+        if (getTimeAvailable())
+        {
+            uint32_t timeNow = tuya_thermostat_get_millis();
+            uint32_t timeLastScheduleUpdate = timeNow+1;
+            
+            if (timeNow - timeLastScheduleUpdate > 30000)
+            {
+                timeLastScheduleUpdate = timeNow;
+                int day = 0;
+                int hour = 0;
+                int mins = 0;
+                if (tuya_thermostat_getTime(day, hour, mins))
+                {
+                    // make monday first day
+                    if (day == 0)
+                        day = 7;
+                    --day;
+                    
+                    int period = -1;
+                    SchedulePeriod_t p;
+                    for (int i = 0 ; i < 6; ++i)
+                    {
+                        tuya_thermostat_getSchedulePeriod(day, i, &p);
+                        
+                        if (hour < p.hour)
+                        {
+                            break;
+                        }
+                        else if (hour == p.hour && mins < p.minute)
+                        {
+                            break;
+                        }
+                        else
+                        {
+                            period = i;
+                        }
+                    }
+                    
+                    
+                    if (-1 == period) // still on previous day schedule
+                    {
+                        if (day == 0)
+                            day = 7;
+                        --day;
+                        period = 5;
+                    }
+                    if (day != scheduleCurrentDay || period != scheduleCurrentPeriod)
+                    {
+                        scheduleCurrentDay = day;
+                        scheduleCurrentPeriod = period;
+                        tuya_thermostat_emitChange(CHANGE_TYPE_CURRENT_SCHEDULE_PERIOD);
+                    }
+                }
+            }
+        }
+        vTaskDelay(1000/ portTICK_PERIOD_MS);
+    }
 }
 
 
 int tuya_thermostat_getScheduleDay()
 {
-	return scheduleCurrentDay;
+    return scheduleCurrentDay;
 }
 
 int tuya_thermostat_getScheduleCurrentPeriod()
 {
-	return scheduleCurrentPeriod;
+    return scheduleCurrentPeriod;
 }
 
 
 void tuya_thermostat_getSchedulePeriod(int day, int period, SchedulePeriod_t* p)
 {
-	if (day < 0 || day > 6 || period < 0 || period > 5)
-		return;
-
-	int i = 0;
-	int j = period;
-	if (i > 4)
-		i = day - 4;
-
-	p->minute = schedule[i * 18 + j * 3 + 0];
-	p->hour = schedule[i * 18 + j * 3 + 1];
-	p->temperature = schedule[i * 18 + j * 3 + 2] / 2.f;
+    if (day < 0 || day > 6 || period < 0 || period > 5)
+        return;
+    
+    int i = 0;
+    int j = period;
+    if (i > 4)
+        i = day - 4;
+    
+    p->minute = schedule[i * 18 + j * 3 + 0];
+    p->hour = schedule[i * 18 + j * 3 + 1];
+    p->temperature = schedule[i * 18 + j * 3 + 2] / 2.f;
 }
 
 
@@ -342,85 +393,86 @@ float tuya_thermostat_getScheduleCurrentPeriodSetPointTemp()
 
 void tuya_thermostat_processTx(bool timeAvailable)
 {
-	tuya_thermostat_sendHeartbeat();
-	tuya_thermostat_updateWifiState();
-	tuya_thermostat_sendTime(timeAvailable);
-
+    tuya_thermostat_sendHeartbeat();
+    tuya_thermostat_updateWifiState();
+    tuya_thermostat_sendTime(timeAvailable);
+    
 }
 
 void tuya_thermostat_sendHeartbeat()
 {
-	static uint32_t timeLastSend = 0;
-	static uint32_t delay = 3000;
-	uint32_t timeNow = get_millis();
-	
-	if (timeNow - timeLastSend > delay)
-	{
-		timeLastSend = timeNow;
-		if (gotHeartbeat)
-			delay = 10000;
-		else
-			delay = 3000;
-
-		tuya_mcu_send_cmd(MSG_CMD_HEARTBEAT);
-	}
+    static uint32_t timeLastSend = 0;
+    static uint32_t delay = 3000;
+    uint32_t timeNow = tuya_thermostat_get_millis();
+    
+    if (timeNow - timeLastSend > delay)
+    {
+        timeLastSend = timeNow;
+        if (gotHeartbeat)
+            delay = 10000;
+        else
+            delay = 3000;
+        
+        tuya_mcu_send_cmd(MSG_CMD_HEARTBEAT);
+    }
 }
 
 void tuya_thermostat_setWifiState(WifiState_t newState)
 {
-	if (wifiState != newState || sendWifiStateMsg)
-	{
-		wifiState = newState;
-
-		sendWifiStateMsg = true;
-		
-		if (gotWifiMode)
-		{
-			uint8_t payload[1] = {(uint8_t)wifiState};
+    if (wifiState != newState || sendWifiStateMsg)
+    {
+        wifiState = newState;
+        
+        sendWifiStateMsg = true;
+        
+        if (gotWifiMode)
+        {
+            uint8_t payload[1] = {(uint8_t)wifiState};
             tuya_mcu_send_message (MSG_CMD_REPORT_WIFI_STATUS, payload, 1);
-			sendWifiStateMsg = false;
-		}
-
-	}
-
+            sendWifiStateMsg = false;
+        }
+        
+    }
+    
 }
 
 void tuya_thermostat_updateWifiState()
 {
-	// check once per second for wifi state change
-	static uint32_t timeLastSend = 0;
-	uint32_t timeNow = get_millis();
-	
-	if (timeNow - timeLastSend > 1000)
-	{
-		timeLastSend = timeNow;
-
-	WifiState_t newState = WIFI_STATE_CONNECT_FAILED;
-/*		wl_status_t wifiStatus = WiFi.status();
-		switch(wifiStatus)
-		{
-			case WL_NO_SHIELD:
-			case WL_IDLE_STATUS:
-			case WL_NO_SSID_AVAIL:
-			case WL_DISCONNECTED:
-			case WL_CONNECTION_LOST:
-			case WL_CONNECT_FAILED:
-				newState = WIFI_STATE_CONNECT_FAILED;
-				break;
-			case WL_SCAN_COMPLETED:
-				//newWifiState = settings1.getWiFiState();
-				break;
-			case WL_CONNECTED:
-				newState = WIFI_STATE_CONNECTED_WITH_INTERNET;
-				break;
-		}*/
-        uint8_t status ;
+    // check once per second for wifi state change
+    static uint32_t timeLastSend = 0;
+    uint32_t timeNow = tuya_thermostat_get_millis();
     
+    if (timeNow - timeLastSend > 1000)
+    {
+        timeLastSend = timeNow;
+        
+        WifiState_t newState = WIFI_STATE_CONNECT_FAILED;
+        /*	need to fix
+         wl_status_t wifiStatus = WiFi.status();
+         switch(wifiStatus)
+         {
+         case WL_NO_SHIELD:
+         case WL_IDLE_STATUS:
+         case WL_NO_SSID_AVAIL:
+         case WL_DISCONNECTED:
+         case WL_CONNECTION_LOST:
+         case WL_CONNECT_FAILED:
+         newState = WIFI_STATE_CONNECT_FAILED;
+         break;
+         case WL_SCAN_COMPLETED:
+         //newWifiState = settings1.getWiFiState();
+         break;
+         case WL_CONNECTED:
+         newState = WIFI_STATE_CONNECTED_WITH_INTERNET;
+         break;
+         }*/
+        uint8_t status ;
+        
         status = sdk_wifi_station_get_connect_status();
         
         switch (status)
         {
-
+                
             case STATION_NO_AP_FOUND:
             case STATION_CONNECT_FAIL:
                 newState = WIFI_STATE_CONNECT_FAILED;
@@ -434,180 +486,188 @@ void tuya_thermostat_updateWifiState()
                 
         }
         
-		tuya_thermostat_setWifiState(newState);
-	}
+        tuya_thermostat_setWifiState(newState);
+    }
 }
 
 void tuya_thermostat_sendTime(bool timeAvailable)
 {
-	struct tm* new_time = NULL;
-	if (timeAvailable)
-	{
-		struct timezone tz = {0};
-		struct timeval tv = {0};
-		
-		gettimeofday(&tv, &tz);
-		time_t tnow = time(NULL);
-
-		// localtime / gmtime every second change
-		static time_t nexttv = 0;
-		if (nexttv < tv.tv_sec && canQuery)
-		{
-			nexttv = tv.tv_sec + 3600; // update every hour
-			new_time = localtime(&tnow);
-		}
-	}
-
-	if (new_time != NULL)
-	{
-		// weekday: 0 = monday, 6 = sunday
-		uint8_t w = (new_time->tm_wday == 0 ? 7 : new_time->tm_wday);
-		uint8_t s = new_time->tm_sec;
-		uint8_t m = new_time->tm_min;
-		uint8_t h = new_time->tm_hour;
-		uint8_t d = new_time->tm_mday;
-		uint8_t M = new_time->tm_mon  + 1;
-		uint8_t y = new_time->tm_year % 100;
-
-		uint8_t payload[8] = {01,y,M,d,h,m,s,w};
+    struct tm* new_time = NULL;
+    if (timeAvailable)
+    {
+        struct timezone tz = {0};
+        struct timeval tv = {0};
+        
+        gettimeofday(&tv, &tz);
+        time_t tnow = time(NULL);
+        
+        // localtime / gmtime every second change
+        static time_t nexttv = 0;
+        if (nexttv < tv.tv_sec && canQuery)
+        {
+            nexttv = tv.tv_sec + 3600; // update every hour
+            new_time = localtime(&tnow);
+        }
+    }
+    
+    if (new_time != NULL)
+    {
+        // weekday: 0 = monday, 6 = sunday
+        uint8_t w = (new_time->tm_wday == 0 ? 7 : new_time->tm_wday);
+        uint8_t s = new_time->tm_sec;
+        uint8_t m = new_time->tm_min;
+        uint8_t h = new_time->tm_hour;
+        uint8_t d = new_time->tm_mday;
+        uint8_t M = new_time->tm_mon  + 1;
+        uint8_t y = new_time->tm_year % 100;
+        
+        uint8_t payload[8] = {01,y,M,d,h,m,s,w};
         tuya_mcu_send_message(MSG_CMD_OBTAIN_LOCAL_TIME, payload, 8);
-	}
+    }
 }
 
 
 void tuya_thermostat_setPower( bool on, bool updateMCU)
 {
-	if (on != powerOn)
-	{
-		powerOn = on;
-		if (updateMCU)
-		{
-			// send change to mcu
-			uint8_t payload[5] = {0x01, 0x01, 0x00, 0x01, (uint8_t)(powerOn ? 1 : 0)};
+    if (on != powerOn)
+    {
+        powerOn = on;
+        if (updateMCU)
+        {
+            // send change to mcu
+            uint8_t payload[5] = {0x01, 0x01, 0x00, 0x01, (uint8_t)(powerOn ? 1 : 0)};
             tuya_mcu_send_message(MSG_CMD_DP_CMD, payload, 5);
-		}
-//		emitChange(ChangeEvent::CHANGE_TYPE_POWER);
-	}
-
+        } else {
+            tuya_thermostat_emitChange(CHANGE_TYPE_POWER);
+        }
+    }
+    
 }
+
+
 void tuya_thermostat_setSetPointTemp( float temp, bool updateMCU)
 {
-	if (temp != setPointTemp)
-	{
-		setPointTemp = temp;
-		if (updateMCU)
-		{
-			// send change to mcu
-			//RX: 55 aa 01 07 00 08 02 02 00 04 00 00 00 24 3c
-			uint8_t payload[8] = {0x02, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, (uint8_t)(setPointTemp*2 + 0.5)};
+    if (temp != setPointTemp)
+    {
+        setPointTemp = temp;
+        if (updateMCU)
+        {
+            // send change to mcu
+            //RX: 55 aa 01 07 00 08 02 02 00 04 00 00 00 24 3c
+            uint8_t payload[8] = {0x02, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, (uint8_t)(setPointTemp*2 + 0.5)};
             tuya_mcu_send_message(MSG_CMD_DP_CMD, payload, 8);
-		}
-		//emitChange(ChangeEvent::CHANGE_TYPE_SETPOINT_TEMP);
-	}
-	
+        } else {
+            tuya_thermostat_emitChange(CHANGE_TYPE_SETPOINT_TEMP);
+        }
+    }
+    
 }
+
 void tuya_thermostat_setInternalTemp( float temp)
 {
-	if (temp != internalTemp)
-	{
-		internalTemp = temp;
-		//emitChange(ChangeEvent::CHANGE_TYPE_INTERNAL_TEMP);
-	}
+    if (temp != internalTemp)
+    {
+        internalTemp = temp;
+        tuya_thermostat_emitChange(CHANGE_TYPE_INTERNAL_TEMP);
+    }
 }
 
 
 void tuya_thermostat_setExternalTemp( float temp)
 {
-	if (temp != externalTemp)
-	{
-		externalTemp = temp;
-		//emitChange(ChangeEvent::CHANGE_TYPE_EXTERNAL_TEMP);
-	}
-	
+    if (temp != externalTemp)
+    {
+        externalTemp = temp;
+        tuya_thermostat_emitChange(CHANGE_TYPE_EXTERNAL_TEMP);
+    }
+    
 }
 
 
 void tuya_thermostat_setMode(thermostat_mode_t m, bool updateMCU)
 {
-	if (m != mode)
-	{
-		mode = m;
-		if (updateMCU)
-		{
-			// send change to mcu
-			uint8_t payload[5] = {0x04, 0x04, 0x00, 0x01, mode};
+    if (m != mode)
+    {
+        mode = m;
+        if (updateMCU)
+        {
+            // send change to mcu
+            uint8_t payload[5] = {0x04, 0x04, 0x00, 0x01, mode};
             tuya_mcu_send_message(MSG_CMD_DP_CMD, payload, 5);
-
-		}
-		//emitChange(ChangeEvent::CHANGE_TYPE_MODE);
-	}
+            
+        } else {
+            tuya_thermostat_emitChange(CHANGE_TYPE_MODE);
+        }
+    }
 }
 
 
 void tuya_thermostat_setEconomy( bool econ, bool updateMCU)
 {
-	if (econ != economyOn)
-	{
-		economyOn = econ;
-		if(updateMCU)
-		{
-			// send change to mcu
-			uint8_t payload[5] = {0x05, 0x01, 0x00, 0x01,(uint8_t)( economyOn ? 1 : 0)};
+    if (econ != economyOn)
+    {
+        economyOn = econ;
+        if(updateMCU)
+        {
+            // send change to mcu
+            uint8_t payload[5] = {0x05, 0x01, 0x00, 0x01,(uint8_t)( economyOn ? 1 : 0)};
             tuya_mcu_send_message(MSG_CMD_DP_CMD, payload, 5);
-		}
-		//emitChange(ChangeEvent::CHANGE_TYPE_ECONOMY);
-	}
+        } else
+        {
+            tuya_thermostat_emitChange(CHANGE_TYPE_ECONOMY);
+        }
+    }
 }
 
 
 void tuya_thermostat_setLock(bool lock, bool updateMCU)
 {
-	if (lock != locked)
-	{
-		locked = lock;
-		if(updateMCU)
-		{
-			// send change to mcu	
-			uint8_t payload[5] = {0x06, 0x01, 0x00, 0x01, (uint8_t)(locked ? 1 : 0)};
+    if (lock != locked)
+    {
+        locked = lock;
+        if(updateMCU)
+        {
+            // send change to mcu
+            uint8_t payload[5] = {0x06, 0x01, 0x00, 0x01, (uint8_t)(locked ? 1 : 0)};
             tuya_mcu_send_message(MSG_CMD_DP_CMD, payload, 5);
-		}
-		//emitChange(ChangeEvent::CHANGE_TYPE_LOCK);
-	}	
+        } else {
+            tuya_thermostat_emitChange(CHANGE_TYPE_LOCK);
+        }
+    }
 }
 
 
 void tuya_thermostat_setSchedule(const uint8_t* s, uint8_t length, bool updateMCU)
 {
-	if (54 != length)
-		return;
-
-	bool changed = false;
-
-	//setSchedule weekday, sat, sun x 6 times
-	for (int i = 0; i < length; ++i)
-	{
-		if (s[i] != schedule[i])
-		{
-			schedule[i] = s[i];
-			changed = true;
-		}
-	}
-	if (changed)
-	{
-		haveSchedule = true;
-		if (updateMCU)
-		{
-			// send change to mcu
-			uint8_t payload[58] = {0x65, 0x00, 0x00, 0x36, 0};
-			uint8_t* ptr = payload + 4;
-			for (int i = 0; i < 54; ++i)
-			{
-				ptr[i] = schedule[i];
-			}
+    if (54 != length)
+        return;
+    
+    bool changed = false;
+    
+    //setSchedule weekday, sat, sun x 6 times
+    for (int i = 0; i < length; ++i)
+    {
+        if (s[i] != schedule[i])
+        {
+            schedule[i] = s[i];
+            changed = true;
+        }
+    }
+    if (changed)
+    {
+        haveSchedule = true;
+        if (updateMCU)
+        {
+            // send change to mcu
+            uint8_t payload[58] = {0x65, 0x00, 0x00, 0x36, 0};
+            uint8_t* ptr = payload + 4;
+            for (int i = 0; i < 54; ++i)
+            {
+                ptr[i] = schedule[i];
+            }
             tuya_mcu_send_message(MSG_CMD_DP_CMD, payload, 58);
-
-		}
-	}
+        }
+    }
 }
 
 
@@ -620,7 +680,7 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
     
     switch(payload[0])
     {
-        case 0x01: // power on/off (byte 4)
+        case CHANGE_TYPE_POWER: // power on/off (byte 4)
         {
             //RX: 55 aa 01 07 00 05 01 01 00 01 01 10
             if (5 == payload_length    )
@@ -629,7 +689,7 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
             }
         }
             break;
-        case 0x02: // set point temp
+        case CHANGE_TYPE_SETPOINT_TEMP: // set point temp
         {
             //RX: 55 aa 01 07 00 08 02 02 00 04 00 00 00 2e 45
             if (8 == payload_length)
@@ -639,7 +699,7 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
             
         }
             break;
-        case 0x03: // temperature
+        case CHANGE_TYPE_INTERNAL_TEMP: // temperature
         {
             //RX: 55 aa 01 07 00 08 03 02 00 04 00 00 00 24 3c
             if (8 == payload_length)
@@ -648,7 +708,7 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
             }
         }
             break;
-        case 0x04: // mode (schedule = 0 / manual = 1)
+        case CHANGE_TYPE_MODE: // mode (schedule = 0 / manual = 1)
         {
             //RX: 55 aa 01 07 00 05 04 04 00 01 00 15
             if (5 == payload_length)
@@ -659,7 +719,7 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
             
         }
             break;
-        case 0x05: // economy
+        case CHANGE_TYPE_ECONOMY: // economy
         {
             //RX: 55 aa 01 07 00 05 05 01 00 01 00 13
             if (5 == payload_length)
@@ -668,7 +728,7 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
             }
         }
             break;
-        case 0x06: // lock
+        case CHANGE_TYPE_LOCK: // lock
         {
             //RX: 55 aa 01 07 00 05 06 01 00 01 00 14
             //    TX: 55 AA 00 06 00 05 06 01 00 01 01 00
@@ -693,7 +753,7 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
             }
         }
             break;
-        case 0x66: // floor temp
+        case CHANGE_TYPE_EXTERNAL_TEMP: // floor temp
         {
             // RX: 55 aa 01 07 00 08 66 02 00 04 00 00 00 00 7b
             if (8 == payload_length)

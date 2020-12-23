@@ -3,9 +3,24 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>       
+#include <sys/time.h>
+#include <FreeRTOS.h>
+#include <task.h>
+#include <tuya_mcu.h>
 
 
+typedef enum
+{
+CHANGE_TYPE_CURRENT_SCHEDULE_PERIOD,
+    CHANGE_TYPE_POWER = 0x01,
+    CHANGE_TYPE_SETPOINT_TEMP = 0x02,
+    CHANGE_TYPE_INTERNAL_TEMP = 0x03,
+    CHANGE_TYPE_MODE = 0x04,
+    CHANGE_TYPE_ECONOMY = 0x05,
+    CHANGE_TYPE_LOCK = 0x06,
+    CHANGE_TYPE_SCHEDULE = 0x65,
+    CHANGE_TYPE_EXTERNAL_TEMP = 0x66,
+} TUYA_Thermostat_change_type_t;
 
 typedef enum
 {
@@ -44,7 +59,7 @@ typedef enum
 {
     MODE_SCHEDULE,
     MODE_MANUAL,
-}thermostat_mode_t;
+} thermostat_mode_t;
 
 typedef struct
 {
@@ -63,33 +78,20 @@ typedef struct
 } SchedulePeriod_t;
 
 
-bool powerOn;
-float setPointTemp;
-float internalTemp;
-float externalTemp;
-thermostat_mode_t mode;
-bool economyOn;
-bool locked;
-uint8_t schedule[54] = {0};
+extern bool powerOn;
+extern float setPointTemp;
+extern float internalTemp;
+extern float externalTemp;
+extern thermostat_mode_t mode;
+extern bool economyOn;
+extern bool locked;
+extern uint8_t schedule[54];
 WifiState_t wifiState;
 WifiMode_t wifiMode;
 
-uint32_t currentByte = 0;
-uint32_t lastMS = 0;
-uint8_t dataLength = 0;
-uint8_t protocolVersion = 0;
-bool    resetBuffer = false;
-bool    sendWifiStateMsg = false;
-bool    gotHeartbeat = false;
-bool    gotProdKey = false;
-bool    gotWifiMode = false;
-bool    canQuery = false;
-bool    locked = false;
 extern  uint8_t uart_port;
 
-bool haveSchedule = false;
-int scheduleCurrentDay = -1;
-int scheduleCurrentPeriod = -1;
+
 
 //tuya_thermostat my_thermostat;
 
@@ -100,5 +102,10 @@ float tuya_thermostat_getScheduleSetPointTemperature(int day, int period);
 void tuya_thermostat_getSchedulePeriod(int day, int period, SchedulePeriod_t* p);
 void tuya_thermostat_updateWifiState();
 void tuya_thermostat_sendHeartbeat();
+void tuya_thermostat_loop(void *args);
+void tuya_thermostat_setPower( bool on, bool updateMCU);
+void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd);
+void tuya_thermostat_setSetPointTemp( float temp, bool updateMCU);
+
 
 #endif
