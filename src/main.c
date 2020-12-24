@@ -1,6 +1,12 @@
+
 /*
  * Example of using esp-homekit library to control
- * wired thermostat, by providing abilit to swith on and off a series of relays
+ * a a  Sonoff S20 using HomeKit.
+ * The esp-wifi-config library is also used in this
+ * example. This makes us of an OAT mechanis created by HomeACessoryKid
+ *
+ * Copyright 2019-2020  David B Brown  (@maccoylton)
+ * 
  *
  */
 

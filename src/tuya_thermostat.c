@@ -1,3 +1,9 @@
+/*
+ *
+ * Copyright 2019-2020  David B Brown  (@maccoylton)
+ * 
+ */
+
 #include <espressif/esp_wifi.h>
 #include <sys/time.h>
 #include <espressif/esp_sta.h>

@@ -1,3 +1,9 @@
+/*
+ *
+ * Copyright 2019-2020  David B Brown  (@maccoylton) 
+ * 
+ */
+
 #include <tuya_mcu.h>
 #include <stdlib.h>
 #include <string.h>
