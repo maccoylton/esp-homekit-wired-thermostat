@@ -43,7 +43,7 @@ const int SAVE_DELAY = 1000;
 
 homekit_characteristic_t wifi_check_interval   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_CHECK_INTERVAL, 10, .setter=wifi_check_interval_set);
 /* checks the wifi is connected and flashes status led to indicated connected */
-homekit_characteristic_t task_stats   = HOMEKIT_CHARACTERISTIC_(CUSTOM_TASK_STATS, false , .setter=task_stats_set);
+homekit_characteristic_t task_stats   = HOMEKIT_CHARACTERISTIC_(CUSTOM_TASK_STATS, true , .setter=task_stats_set);
 homekit_characteristic_t wifi_reset   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_RESET, false, .setter=wifi_reset_set);
 homekit_characteristic_t ota_beta     = HOMEKIT_CHARACTERISTIC_(CUSTOM_OTA_BETA, false, .setter=ota_beta_set);
 homekit_characteristic_t lcm_beta    = HOMEKIT_CHARACTERISTIC_(CUSTOM_LCM_BETA, false, .setter=lcm_beta_set);
@@ -68,10 +68,10 @@ homekit_characteristic_t current_state       = HOMEKIT_CHARACTERISTIC_( CURRENT_
 
 homekit_characteristic_t target_state        = HOMEKIT_CHARACTERISTIC_( TARGET_HEATING_COOLING_STATE, 0,  .setter = set_target_state );
 
-/*homekit_characteristic_t cooling_threshold   = HOMEKIT_CHARACTERISTIC_( COOLING_THRESHOLD_TEMPERATURE, 25, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(on_update) );
+homekit_characteristic_t cooling_threshold   = HOMEKIT_CHARACTERISTIC_( COOLING_THRESHOLD_TEMPERATURE, 25 );
  
- homekit_characteristic_t heating_threshold   = HOMEKIT_CHARACTERISTIC_( HEATING_THRESHOLD_TEMPERATURE, 15, .callback=HOMEKIT_CHARACTERISTIC_CALLBACK(on_update) );
- */
+homekit_characteristic_t heating_threshold   = HOMEKIT_CHARACTERISTIC_( HEATING_THRESHOLD_TEMPERATURE, 15 );
+
 
 // The GPIO pin that is oconnected to the button on the wired thermostat controller.
 const int BUTTON_GPIO = 0;
@@ -84,27 +84,46 @@ uint8_t uart_port=0;
 
 
 void set_target_temperature (homekit_value_t value){
-    
+ 
+    printf ("%s: %f", __func__, value.float_value);
     tuya_thermostat_setSetPointTemp (value.float_value, true);
-    
+    target_temperature.value = HOMEKIT_FLOAT(setPointTemp);
+    homekit_characteristic_bounds_check(&target_temperature);
+    sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+    homekit_characteristic_notify(&target_temperature, target_temperature.value);
+    printf ("target temperatre: %f", setPointTemp);
+    printf ("%s: end\n", __func__);
+
 }
 
 
 void set_target_state (homekit_value_t value){
     
+    printf ("%s: ", __func__);
     switch ( (int) value.int_value)
     {
         case 0:
             tuya_thermostat_setPower( false , true);
+            current_state.value = HOMEKIT_UINT8(0);
+            homekit_characteristic_bounds_check(&current_state);
+            sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+            homekit_characteristic_notify(&current_state, current_state.value);
+            printf ("Off");
             break;
         case 1:
             tuya_thermostat_setPower( true , true);
+            current_state.value = HOMEKIT_UINT8(1);
+            homekit_characteristic_bounds_check(&current_state);
+            sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+            homekit_characteristic_notify(&current_state, current_state.value);
+            printf ("Heat");
             break;
         case 2:
-            break;
         case 3:
+            printf ("Unsuported");
             break;
     }
+    printf (" %s:end\n", __func__);
 }
 
 
@@ -118,26 +137,35 @@ void gpio_init() {
 void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
 {
     
+    printf ("%s: emit command : ", __func__);
     switch (cmd){
         case CHANGE_TYPE_POWER:
             current_state.value = HOMEKIT_UINT8(powerOn ? 1 : 0);
+            homekit_characteristic_bounds_check(&current_state);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&current_state, current_state.value);
+            printf ("power on: %d", powerOn);
             break;
         case CHANGE_TYPE_SETPOINT_TEMP:
             target_temperature.value = HOMEKIT_FLOAT(setPointTemp);
+            homekit_characteristic_bounds_check(&target_temperature);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&target_temperature, target_temperature.value);
+            printf ("target temperatre: %f", setPointTemp);
             break;
         case CHANGE_TYPE_INTERNAL_TEMP:
             current_temperature.value = HOMEKIT_FLOAT(internalTemp);
+            homekit_characteristic_bounds_check(&current_temperature);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&current_temperature, current_temperature.value);
+            printf ("current temperatre: %f", internalTemp);
             break;
         case CHANGE_TYPE_MODE:
             target_state.value = HOMEKIT_UINT8((setPointTemp > internalTemp) ? 1 : 0);
+            homekit_characteristic_bounds_check(&target_state);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&target_state, target_state.value);
+            printf ("mode: %d", target_state.value.int_value);
             break;
         case CHANGE_TYPE_ECONOMY:
             break;
@@ -147,17 +175,20 @@ void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
             break;
         case CHANGE_TYPE_EXTERNAL_TEMP:
             current_temperature.value = HOMEKIT_FLOAT(externalTemp);
+            homekit_characteristic_bounds_check(&current_temperature);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&current_temperature, current_temperature.value);
+            printf ("current temperatre: %f", externalTemp);
             break;
         default:
             printf ("%s Unknow change type received from MCU\n", __func__);
     }
+    printf ("%s: end\n", __func__);
 }
 
 
 homekit_accessory_t *accessories[] = {
-    HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_sprinkler, .services=(homekit_service_t*[]){
+    HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_thermostat, .services=(homekit_service_t*[]){
         HOMEKIT_SERVICE(ACCESSORY_INFORMATION, .characteristics=(homekit_characteristic_t*[]){
             &name,
             &manufacturer,
@@ -169,8 +200,15 @@ homekit_accessory_t *accessories[] = {
         }),
         
         
-        HOMEKIT_SERVICE(VALVE, .primary=true, .characteristics=(homekit_characteristic_t*[]){
-            HOMEKIT_CHARACTERISTIC(NAME, "Valve 1"),
+        HOMEKIT_SERVICE(THERMOSTAT, .primary=true, .characteristics=(homekit_characteristic_t*[]){
+            HOMEKIT_CHARACTERISTIC(NAME, DEVICE_NAME),
+            &current_temperature,
+            &target_temperature,
+            &current_state,
+            &target_state,
+            &cooling_threshold,
+            &heating_threshold,
+            &units,
             &ota_trigger,
             &wifi_reset,
             &ota_beta,
@@ -195,11 +233,20 @@ homekit_server_config_t config = {
 void recover_from_reset (int reason){
     /* called if we restarted abnormally */
     printf ("%s: reason %d\n", __func__, reason);
+    load_characteristic_from_flash(&target_temperature);
+    homekit_characteristic_notify (&target_temperature, target_temperature.value);
+    tuya_thermostat_setSetPointTemp (target_temperature.value.float_value, true);
+    load_characteristic_from_flash(&current_state);
+    homekit_characteristic_notify (&current_state, current_state.value);
+    tuya_thermostat_setPower( (current_state.value.int_value == 1 )? true : false , true);
+
 }
 
 void save_characteristics ( ){
     
     printf ("%s:\n", __func__);
+    save_characteristic_to_flash (&target_temperature, target_temperature.value);
+    save_characteristic_to_flash (&current_state, current_state.value);
     save_characteristic_to_flash(&wifi_check_interval, wifi_check_interval.value);
 }
 
@@ -213,15 +260,14 @@ void accessory_init (void ){
     /* initalise anything you don't want started until wifi and pairing is confirmed */
     load_characteristic_from_flash(&wifi_check_interval);
     homekit_characteristic_notify(&wifi_check_interval, wifi_check_interval.value);
+    uart_set_baud(uart_port, 9600);
+    xTaskCreate(tuya_thermostat_loop, "tuya_thermostat_loop", 1024 , NULL, tskIDLE_PRIORITY+1, NULL);
 }
 
 void user_init(void) {
     
     standard_init (&name, &manufacturer, &model, &serial, &revision);
-    uart_set_baud(uart_port, 9600);
     gpio_init();
-    xTaskCreate(tuya_thermostat_loop, "tuya_thermostat_loop", 512 , NULL, tskIDLE_PRIORITY+1, NULL);
-    
     wifi_config_init(DEVICE_NAME, NULL, on_wifi_ready);
     
 }

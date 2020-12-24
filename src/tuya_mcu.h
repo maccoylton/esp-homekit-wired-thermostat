@@ -2,6 +2,7 @@
 #define TUYA_MCU
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <espressif/esp_wifi.h>
 #include <espressif/esp_sta.h>
 #include <espressif/esp_common.h>
