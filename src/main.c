@@ -63,6 +63,7 @@ homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISIO
 
 void set_target_temperature (homekit_value_t value);
 void set_target_state (homekit_value_t value);
+void set_external_temp_sensor (homekit_value_t value);
 
 homekit_characteristic_t current_temperature = HOMEKIT_CHARACTERISTIC_( CURRENT_TEMPERATURE, 0);
 
@@ -77,7 +78,7 @@ homekit_characteristic_t target_state        = HOMEKIT_CHARACTERISTIC_( TARGET_H
 homekit_characteristic_t cooling_threshold   = HOMEKIT_CHARACTERISTIC_( COOLING_THRESHOLD_TEMPERATURE, 25 );
  
 homekit_characteristic_t heating_threshold   = HOMEKIT_CHARACTERISTIC_( HEATING_THRESHOLD_TEMPERATURE, 15 );
-
+homekit_characteristic_t external_temp_sensor = HOMEKIT_CHARACTERISTIC_(CUSTOM_EXTERNALTEMP_SENSOR, false, .setter = set_external_temp_sensor);
 
 // The GPIO pin that is oconnected to the button on the wired thermostat controller.
 const int BUTTON_GPIO = 0;
@@ -88,6 +89,14 @@ int led_off_value = -1;
 
 uint8_t uart_port=0;
 
+void set_external_temp_sensor (homekit_value_t value){
+    
+    printf ("%s: %f", __func__, value.float_value);
+    externalTempSensor = value.bool_value;
+    sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+    printf ("%s: end\n", __func__);
+    
+}
 
 void set_target_temperature (homekit_value_t value){
  
@@ -97,7 +106,7 @@ void set_target_temperature (homekit_value_t value){
     homekit_characteristic_bounds_check(&target_temperature);
     sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
     homekit_characteristic_notify(&target_temperature, target_temperature.value);
-    printf ("target temperatre: %f", setPointTemp);
+    printf ("target temperatre: %f ", setPointTemp);
     printf ("%s: end\n", __func__);
 
 }
@@ -215,6 +224,7 @@ homekit_accessory_t *accessories[] = {
             &cooling_threshold,
             &heating_threshold,
             &units,
+            &external_temp_sensor,
             &ota_trigger,
             &wifi_reset,
             &ota_beta,
@@ -253,6 +263,7 @@ void save_characteristics ( ){
     printf ("%s:\n", __func__);
     save_characteristic_to_flash (&target_temperature, target_temperature.value);
     save_characteristic_to_flash (&current_state, current_state.value);
+    save_characteristic_to_flash (&external_temp_sensor, external_temp_sensor.value);
     save_characteristic_to_flash(&wifi_check_interval, wifi_check_interval.value);
 }
 

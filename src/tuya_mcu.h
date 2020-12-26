@@ -25,6 +25,23 @@ enum message_indexes
     E_PAYLOAD = 6
 };
 
+typedef enum
+{
+    MSG_CMD_HEARTBEAT = 0x00,
+    MSG_CMD_QUERY_PROD_INFO = 0x01,
+    MSG_CMD_QUERY_WIFI_MODE = 0x02,
+    MSG_CMD_REPORT_WIFI_STATUS = 0x03,
+    MSG_CMD_RESET_WIFI_SWITCH_NET_CFG = 0x04,
+    MSG_CMD_RESET_WIFI_SELECT_NET_CFG = 0x05,
+    MSG_CMD_DP_CMD = 0x06, // DP = data point
+    MSG_CMD_DP_STATUS = 0x07,
+    MSG_CMD_QUERY_DEVICE_STATUS = 0x08, // request all DPs
+    MSG_CMD_START_OTA_UPGRADE = 0x0a,
+    MSG_CMD_TRANSMIT_OTA_PACKAGE = 0x0b,
+    MSG_CMD_OBTAIN_LOCAL_TIME = 0x1c,
+    MSG_CMD_TEST_WIFI = 0x0e,
+} TUYAMessageCmd_t;
+
 uint8_t tuya_mcu_get_msg_length(uint8_t msg[]);
 /* calculate the message legnth form the heaer length + the payload length */
 
@@ -67,5 +84,7 @@ uint8_t tuya_mcu_get_payload(uint8_t msg[], uint8_t payload[]);
 
 uint8_t tuya_mcu_get_version(uint8_t msg[]);
 
+void tuya_mcu_print_message(uint8_t msg[], bool valid);
+/* print the contents of the buffer */
 
 #endif

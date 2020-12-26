@@ -18,6 +18,7 @@ float externalTemp = 20.0f;
 thermostat_mode_t mode = 0;
 bool economyOn = false;
 bool locked = false;
+bool externalTempSensor= false;
 uint8_t schedule[54] = {0};
 
 /*variables used here */
@@ -71,11 +72,14 @@ bool tuya_thermostat_getTime(int dayOfWeek, int hour, int minutes)
 
 
 long long tuya_thermostat_get_millis() {
-    printf ("%s: Start\n", __func__);
-    struct timeval te;
+    //printf ("%s: Start\n", __func__);
+/*    struct timeval te;
     gettimeofday(&te, NULL);
-    printf ("%s: End\n", __func__);
-    return te.tv_sec * 1000LL + te.tv_usec / 1000;
+    printf("Time in microseconds: %0.3f microseconds\n",
+           (float)(te.tv_sec));
+    //printf ("%s: End\n", __func__);
+    return te.tv_sec * 1000LL + te.tv_usec / 1000;*/
+    return xTaskGetTickCount() * portTICK_PERIOD_MS;
 }
 
 
@@ -89,24 +93,27 @@ void reset()
 
 void checkReset()
 {
-    printf ("%s: Start\n", __func__);
+    //printf ("%s: Start\n", __func__);
     if (resetBuffer)
     {
+        printf ("%s: Resetting\n", __func__);
         currentByte = 0;
         dataLength = 0;
         resetBuffer = false;
     }
-    printf ("%s: End\n", __func__);
+    //printf ("%s: End\n", __func__);
 }
 
 bool msg_buffer_addbyte(uint8_t byte, uint8_t msg[])
 {
-    printf ("%s: Start\n", __func__);
+    //printf ("%s: Start, byte:0x%02X\n", __func__, byte);
 
     uint32_t newLastMS = tuya_thermostat_get_millis();
     
-    if (newLastMS - lastMS > 5)
+    if (newLastMS - lastMS > 5){
+        printf ("%s: newLastMS:%d, lastMS %d, difference %d\n", __func__, newLastMS, lastMS, newLastMS - lastMS );
         reset();
+    }
     
     checkReset();
     
@@ -116,6 +123,7 @@ bool msg_buffer_addbyte(uint8_t byte, uint8_t msg[])
     {
         if (0x55 == byte)
         {
+            //printf ("%s: First Magic Bit\n", __func__);
             msg[currentByte] = byte;
             ++currentByte;
         }
@@ -125,6 +133,7 @@ bool msg_buffer_addbyte(uint8_t byte, uint8_t msg[])
     {
         if (0xAA == byte)
         {
+            //printf ("%s: Second Magic Bit\n", __func__);
             msg[currentByte] = byte;
             ++currentByte;
         }
@@ -137,18 +146,20 @@ bool msg_buffer_addbyte(uint8_t byte, uint8_t msg[])
     {
         msg[currentByte] = byte;
         
-        if (5 == currentByte)
+        if (5 == currentByte){
             dataLength = msg[4] * 0x100 + msg[5];
-        
+            printf ("%s: Got length bytes, length=%d\n", __func__, dataLength);
+        }
         if (currentByte >= 6u && dataLength+6u == currentByte)
         {
+            printf ("%s: Got last byte, \n", __func__);
             reset();
             return true;
         }
         else
             ++currentByte;
     }
-    printf ("%s: End\n", __func__);
+    //printf ("%s: End\n", __func__);
 
     return false;
 }
@@ -160,18 +171,21 @@ void tuya_thermostat_process_message(uint8_t msg[])
 
     if (!tuya_mcu_message_is_valid(msg))
     {
-        /*            logger.addBytes("RX INVALID MSG:", msg_buffer.bytes, msg_buffer.length;
-         */
+        printf ("%s: RX INVALID MSG:", __func__);
+        tuya_mcu_print_message (msg, false);
         return;
+    } else {
+        tuya_mcu_print_message(msg, true);
     }
-    /*
-     logger.addBytes("RX:", msg_buffer.bytes, msg_buffer.length;
-     */
+        
+    uint8_t cmd = tuya_mcu_get_command(msg);
+    printf ("%s: CMD: 0x%02X\n", __func__, cmd );
     
     switch(tuya_mcu_get_command(msg))
     {
         case MSG_CMD_HEARTBEAT:
         {
+            printf ("%s: Heartbeat\n", __func__);
             uint8_t payload[MAX_BUFFER_LENGTH];
             uint8_t payload_length = tuya_mcu_get_payload ( msg, payload);
             if (1 == payload_length)
@@ -193,6 +207,7 @@ void tuya_thermostat_process_message(uint8_t msg[])
             break;
         case MSG_CMD_QUERY_PROD_INFO:
         {
+            printf ("%s: Query Prod Info\n", __func__);
             if (tuya_mcu_get_payload_length(msg))
             {
                 gotProdKey = true;
@@ -200,13 +215,13 @@ void tuya_thermostat_process_message(uint8_t msg[])
                 if (!gotWifiMode)
                 {
                     tuya_mcu_send_cmd (MSG_CMD_QUERY_WIFI_MODE);
-                    
                 }
             }
         }
             break;
         case MSG_CMD_QUERY_WIFI_MODE:
         {
+            printf ("%s: Query Wifi mode, got WiFi Mode\n", __func__);
             gotWifiMode = true;
             if (tuya_mcu_get_payload_length(msg) == 2)
             {
@@ -225,12 +240,14 @@ void tuya_thermostat_process_message(uint8_t msg[])
             break;
         case MSG_CMD_REPORT_WIFI_STATUS:
         {
+            printf ("%s: Report WiFi status\n", __func__);
             canQuery = true;
             tuya_mcu_send_cmd (MSG_CMD_QUERY_DEVICE_STATUS);
         }
             break;
         case MSG_CMD_RESET_WIFI_SWITCH_NET_CFG:
         {
+            printf ("%s: Reset Wifi\n", __func__);
             tuya_mcu_send_cmd (MSG_CMD_RESET_WIFI_SWITCH_NET_CFG);
             
             /* need to sort this                if (wifiConfigCallback)
@@ -239,12 +256,6 @@ void tuya_thermostat_process_message(uint8_t msg[])
              wifiConfigCallback();
              }
              */
-        }
-            break;
-        case MSG_CMD_RESET_WIFI_SELECT_NET_CFG:
-        {
-            // not implemented
-            
         }
             break;
         case MSG_CMD_DP_STATUS:
@@ -257,6 +268,7 @@ void tuya_thermostat_process_message(uint8_t msg[])
             break;
         default:
             // unknown command
+            printf ("%s: unknown command\n", __func__);
             break;
     }
     printf ("%s: Start\n", __func__);
@@ -411,6 +423,7 @@ void tuya_thermostat_sendHeartbeat()
     static uint32_t delay = 3000;
     uint32_t timeNow = tuya_thermostat_get_millis();
     
+    printf ("%s: time last send %d, time now: %d, delay: %d, got heatbeat %s\n", __func__, timeLastSend, timeNow, delay, gotHeartbeat ? "True" : "False");
     if (timeNow - timeLastSend > delay)
     {
         timeLastSend = timeNow;
@@ -427,6 +440,8 @@ void tuya_thermostat_sendHeartbeat()
 
 void tuya_thermostat_setWifiState(WifiState_t newState)
 {
+    printf ("%s: Start\n", __func__);
+
     if (wifiState != newState || sendWifiStateMsg)
     {
         wifiState = newState;
@@ -441,12 +456,15 @@ void tuya_thermostat_setWifiState(WifiState_t newState)
         }
         
     }
-    
+    printf ("%s: End\n", __func__);
+
 }
 
 void tuya_thermostat_updateWifiState()
 {
     // check once per second for wifi state change
+    printf ("%s: Start\n", __func__);
+
     static uint32_t timeLastSend = 0;
     uint32_t timeNow = tuya_thermostat_get_millis();
     
@@ -455,28 +473,8 @@ void tuya_thermostat_updateWifiState()
         timeLastSend = timeNow;
         
         WifiState_t newState = WIFI_STATE_CONNECT_FAILED;
-        /*	need to fix
-         wl_status_t wifiStatus = WiFi.status();
-         switch(wifiStatus)
-         {
-         case WL_NO_SHIELD:
-         case WL_IDLE_STATUS:
-         case WL_NO_SSID_AVAIL:
-         case WL_DISCONNECTED:
-         case WL_CONNECTION_LOST:
-         case WL_CONNECT_FAILED:
-         newState = WIFI_STATE_CONNECT_FAILED;
-         break;
-         case WL_SCAN_COMPLETED:
-         //newWifiState = settings1.getWiFiState();
-         break;
-         case WL_CONNECTED:
-         newState = WIFI_STATE_CONNECTED_WITH_INTERNET;
-         break;
-         }*/
-        uint8_t status ;
-        
-        status = sdk_wifi_station_get_connect_status();
+
+        uint8_t status = sdk_wifi_station_get_connect_status();
         
         switch (status)
         {
@@ -496,7 +494,9 @@ void tuya_thermostat_updateWifiState()
         
         tuya_thermostat_setWifiState(newState);
     }
+    printf ("%s: End\n", __func__);
 }
+
 
 void tuya_thermostat_sendTime(bool timeAvailable)
 {
@@ -581,7 +581,7 @@ void tuya_thermostat_setSetPointTemp( float temp, bool updateMCU)
 
 void tuya_thermostat_setInternalTemp( float temp)
 {
-    printf ("%s: Start\n", __func__);
+    printf ("%s: Start, temp: %f2.1, last inernal temp:%f2.1\n", __func__, temp, internalTemp);
 
     if (temp != internalTemp)
     {
@@ -595,7 +595,7 @@ void tuya_thermostat_setInternalTemp( float temp)
 
 void tuya_thermostat_setExternalTemp( float temp)
 {
-    printf ("%s: Start\n", __func__);
+    printf ("%s: Start, temp:%f2.2, last external temp:%f2.2\n", __func__, temp, externalTemp);
 
     if (temp != externalTemp)
     {
@@ -715,7 +715,12 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
     
     uint8_t payload_length = tuya_mcu_get_payload(msg, payload);
     
-    
+    printf ("%s: Payload, length %d: ", __func__, payload_length);
+    for (uint8_t i = 0; i < payload_length ; i++)
+    {
+        printf(" 0x%02X", payload[i]);
+    }
+    printf ("\n");
     switch(payload[0])
     {
         case CHANGE_TYPE_POWER: // power on/off (byte 4)
@@ -745,9 +750,14 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
         {
             //RX: 55 aa 01 07 00 08 03 02 00 04 00 00 00 24 3c
             printf ("%s: Internal Temp\n", __func__);
-            if (8 == payload_length)
+            if (!externalTempSensor)
             {
-                tuya_thermostat_setInternalTemp(payload[7]/2.0f);
+                /* no external temp sensor so use internal  */
+                if (8 == payload_length)
+                {
+                    tuya_thermostat_setInternalTemp(payload[7]/2.0f);
+                }
+                
             }
         }
             break;
@@ -804,10 +814,13 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
         case CHANGE_TYPE_EXTERNAL_TEMP: // floor temp
         {
             // RX: 55 aa 01 07 00 08 66 02 00 04 00 00 00 00 7b
-            printf ("%s: External Temp\n", __func__);
-            if (8 == payload_length)
-            {
-                tuya_thermostat_setExternalTemp(payload[7]/2.0f);
+            if (externalTempSensor) {
+                /*  external temp sensor is present */
+                printf ("%s: External Temp\n", __func__);
+                if (8 == payload_length)
+                {
+                    tuya_thermostat_setExternalTemp(payload[7]/2.0f);
+                }
             }
         }
             break;
@@ -821,7 +834,8 @@ void tuya_thermostat_handleDPStatusMsg(uint8_t msg[])
             
         }
             break;
-            
+        default:
+            printf ("%s: Default Unknown\n", __func__);
     }
     printf ("%s: End\n", __func__);
 

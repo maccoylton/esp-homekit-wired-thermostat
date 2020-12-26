@@ -24,23 +24,6 @@ CHANGE_TYPE_CURRENT_SCHEDULE_PERIOD,
 
 typedef enum
 {
-    MSG_CMD_HEARTBEAT = 0x00,
-    MSG_CMD_QUERY_PROD_INFO = 0x01,
-    MSG_CMD_QUERY_WIFI_MODE = 0x02,
-    MSG_CMD_REPORT_WIFI_STATUS = 0x03,
-    MSG_CMD_RESET_WIFI_SWITCH_NET_CFG = 0x04,
-    MSG_CMD_RESET_WIFI_SELECT_NET_CFG = 0x05,
-    MSG_CMD_DP_CMD = 0x06, // DP = data point
-    MSG_CMD_DP_STATUS = 0x07,
-    MSG_CMD_QUERY_DEVICE_STATUS = 0x08, // request all DPs
-    MSG_CMD_START_OTA_UPGRADE = 0x0a,
-    MSG_CMD_TRANSMIT_OTA_PACKAGE = 0x0b,
-    MSG_CMD_OBTAIN_LOCAL_TIME = 0x1c,
-    MSG_CMD_TEST_WIFI = 0x0e,
-} TUYAMessageCmd_t;
-
-typedef enum
-{
     WIFI_MODE_COOPERATIVE_PROCESSING,
     WIFI_MODE_WIFI_PROCESSING
 } WifiMode_t;
@@ -89,6 +72,7 @@ extern uint8_t schedule[54];
 WifiState_t wifiState;
 WifiMode_t wifiMode;
 
+extern bool externalTempSensor;
 extern  uint8_t uart_port;
 
 
