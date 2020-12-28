@@ -5,6 +5,7 @@ EXTRA_COMPONENTS = \
     extras/dhcpserver \
 	extras/http-parser \
 	extras/rboot-ota \
+    extras/sntp \
 	$(abspath ../components/esp-wolfssl) \
 	$(abspath ../components/esp-cjson) \
 	$(abspath ../components/esp-homekit) \
