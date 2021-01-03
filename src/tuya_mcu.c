@@ -22,7 +22,7 @@ uint32_t lastMS = 0;
 
 bool tuya_mcu_getTime(int dayOfWeek, int hour, int minutes)
 {
-    printf ("%s: \n", __func__);
+    printf ("%s: ", __func__);
     bool gotTime = false;
     struct tm* new_time = NULL;
     time_t tnow = (time_t)-1;
@@ -49,12 +49,12 @@ bool tuya_mcu_getTime(int dayOfWeek, int hour, int minutes)
 
 
 long long tuya_mcu_get_millis() {
-    //printf ("%s: Start\n", __func__);
+    //printf ("%s: ", __func__);
     /*    struct timeval te;
      gettimeofday(&te, NULL);
-     printf("Time in microseconds: %0.3f microseconds\n",
+     printf("Time in microseconds: %0.3f microseconds: ",
      (float)(te.tv_sec));
-     //printf ("%s: End\n", __func__);
+     //printf ("End: ", __func__);
      return te.tv_sec * 1000LL + te.tv_usec / 1000;*/
     return xTaskGetTickCount() * portTICK_PERIOD_MS;
 }
@@ -62,13 +62,13 @@ long long tuya_mcu_get_millis() {
 
 
 bool serial_available(){
-    //printf ("%s: Start\n", __func__);
+    printf ("%s: ", __func__);
     
     if (uart_rxfifo_wait(uart_port,0) == 0){
-        //rintf ("%s: nothing to read. End\n", __func__);
+        //printf ("nothing to read. End: ");
         return false;
     } else {
-        //printf ("%s: something to read. End\n", __func__);
+        //printf ("something to read. End: ");
         return true;
     }
 }
@@ -83,23 +83,23 @@ int serial_read (){
 
 void reset()
 {
-    //printf ("%s: Start\n", __func__);
+    //printf ("%s: ", __func__);
     resetBuffer = true;
-    //printf ("%s: End\n", __func__);
+    //printf ("End: ");
 }
 
 
 void checkReset()
 {
-    //printf ("%s: Start\n", __func__);
+    //printf ("%s: ", __func__);
     if (resetBuffer)
     {
-        printf ("%s: Resetting ", __func__);
+        printf ("Resetting: ");
         currentByte = 0;
         dataLength = 0;
         resetBuffer = false;
     }
-    //printf ("%s: End\n", __func__);
+    //printf ("End: ", __func__);
 }
 
 
@@ -113,10 +113,10 @@ uint8_t serial_write (const uint8_t* ptr, uint8_t len){
             continue;
         if(((char *)ptr)[i] == '\n')
             uart_putc(0, '\r');
-        printf (" 0x%02X", ptr[i]);
+        printf ("0x%02X ", ptr[i]);
         uart_putc(0, ((char *)ptr)[i]);
     }
-    printf (" : Sent %d bytes: ", len);
+    printf (": Sent %d bytes: ", len);
     return len;
     
 }
@@ -217,12 +217,12 @@ void tuya_mcu_print_message (uint8_t msg[], bool valid){
     if (valid) {
         message_length = tuya_mcu_get_msg_length (msg);
     }
-    printf (" Message:");
+    printf ("Message: ");
     
     
     for (uint8_t i=0 ;  i < message_length ; i++)
         printf (" 0x%02X", msg[i]);
-    printf (" %s: End ", __func__);
+    printf (": End: ");
     
 }
 
@@ -233,15 +233,15 @@ bool tuya_mcu_message_is_valid(uint8_t msg[])
     uint8_t checksum = tuya_mcu_calc_checksum(msg);
     
     if (msg[E_MAGIC1] == 0x55 && msg[E_MAGIC2] == 0xaa && message_length >= TUYA_MCU_HEADER_SIZE && checksum == msg[message_length - 1] ){
-        printf (" Valid: ");
+        printf ("Valid: ");
         return true;
     } else {
         if ( msg[E_MAGIC1] != 0x55 || msg[E_MAGIC2] != 0xaa)
-            printf (" invalid magic bits 0x%02X 0x%02X\n", msg[E_MAGIC1], msg[E_MAGIC2]);
+            printf ("invalid magic bits 0x%02X 0x%02X: ", msg[E_MAGIC1], msg[E_MAGIC2]);
         if (message_length < TUYA_MCU_HEADER_SIZE)
-            printf (" invalid message length %d\n", message_length);
+            printf ("invalid message length %d: ", message_length);
         if ( checksum != msg[message_length - 1] )
-            printf (" invalid checkum, calculated %d, received %d\n", checksum, (uint8_t) msg[message_length - 1] );
+            printf ("invalid checkum, calculated %d, received %d, length: %d: ", checksum, (uint8_t) msg[message_length - 1], message_length );
         return false;
     }
 }
@@ -273,7 +273,7 @@ uint8_t tuya_mcu_get_payload(uint8_t msg[], uint8_t payload[])
     //printf ("%s: Start: ", __func__);
     uint8_t payload_length = tuya_mcu_get_payload_length(msg);
     memcpy(payload, &msg[E_PAYLOAD], payload_length);
-    printf (" payload length %d ", payload_length);
+    printf ("payload length %d: ", payload_length);
     return (payload_length);
 }
 
@@ -304,7 +304,7 @@ void tuya_mcu_set_payload(uint8_t msg[], uint8_t* payload, uint8_t payload_lengt
     else
     {
         /* need to add what to do if length is too big */
-        printf ("%s: Something went wrong, Payload too long\n", __func__);
+        printf ("%s: Something went wrong, Payload too long: ", __func__);
     }
     //printf ("%s: End\n", __func__);
 }
@@ -312,7 +312,7 @@ void tuya_mcu_set_payload(uint8_t msg[], uint8_t* payload, uint8_t payload_lengt
 
 void tuya_mcu_send_cmd(uint8_t cmd)
 {
-    printf ("%s: ", __func__);
+    printf ("%s: %0x02X", __func__, cmd);
     uint8_t msg[MAX_BUFFER_LENGTH];
     
     msg[E_MAGIC1] = 0x55;
@@ -334,13 +334,13 @@ void tuya_mcu_send_cmd(uint8_t cmd)
     } else {
         tuya_mcu_print_message (msg, false);
     }
-    printf (" End\n");
+    printf ("End\n");
 }
 
 
 void tuya_mcu_send_message(uint8_t cmd, uint8_t payload[], uint8_t payload_length)
 {
-    printf ("%s: \n", __func__);
+    printf ("%s: ", __func__);
     
     uint8_t msg[MAX_BUFFER_LENGTH];
     
@@ -362,7 +362,7 @@ void tuya_mcu_send_message(uint8_t cmd, uint8_t payload[], uint8_t payload_lengt
          logger.addBytes("TX INVALID MSG:", msg, msg.getLength());
          */
     }
-    printf (": End");
+    printf (": End: ");
     
 }
 
@@ -400,7 +400,7 @@ void tuya_mcu_updateWifiState()
         
         tuya_mcu_setWifiState(newState);
     }
-    printf (" End\n");
+    printf ("End\n");
 }
 
 
@@ -413,7 +413,7 @@ void tuya_mcu_sendHeartbeat()
     static uint32_t delay = 3000;
     uint32_t timeNow = tuya_mcu_get_millis();
     
-    printf (" time last send %d, time now: %d, delay: %d, diff: %d : got heartbeat %s\n", timeLastSend, timeNow, delay, timeNow - timeLastSend, gotHeartbeat ? "True" : "False");
+    printf ("time last %d, time now: %d, delay: %d, diff: %d : got heartbeat %s\n", timeLastSend, timeNow, delay, timeNow - timeLastSend, gotHeartbeat ? "True" : "False");
     if (timeNow - timeLastSend > delay)
     {
         timeLastSend = timeNow;

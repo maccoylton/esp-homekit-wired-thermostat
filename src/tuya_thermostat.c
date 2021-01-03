@@ -235,7 +235,7 @@ void tuya_thermostat_setPower( bool on, bool updateMCU)
 
 void tuya_thermostat_setSetPointTemp( float temp, bool updateMCU)
 {
-    printf ("%s: current target: %2.1f, new target: %2.1f: update MCU: %s", __func__, setPointTemp, temp, updateMCU ? "True" : "False");
+    printf ("%s: current target: %2.1f, new target: %2.1f: update MCU: %s ", __func__, setPointTemp, temp, updateMCU ? "True" : "False");
 
     if (temp != setPointTemp)
     {
@@ -394,7 +394,7 @@ void tuya_thermostat_process_message(uint8_t msg[])
     }
     
     uint8_t cmd = tuya_mcu_get_command(msg);
-    printf (" CMD: 0x%02X", cmd );
+    printf ("CMD: 0x%02X", cmd );
     
     switch(tuya_mcu_get_command(msg))
     {
@@ -441,26 +441,30 @@ void tuya_thermostat_process_message(uint8_t msg[])
         {
             printf (" Query Wifi mode, got WiFi Mode: ");
             gotWifiMode = true;
-            if (tuya_mcu_get_payload_length(msg) == 2)
+
+            uint8_t payload[MAX_BUFFER_LENGTH];
+            uint8_t payload_length = tuya_mcu_get_payload ( msg, payload);
+            if ( payload_length== 2)
             {
-                //const uint8_t* payload = tuya_mcu_get_payload(msg);
-                //uint8_t wifi_indicator_pin = payload[0];
-                //uint8_t reset_pin = payload[1];
+                uint8_t wifi_indicator_pin = payload[0];
+                uint8_t reset_pin = payload[1];
                 wifiMode = WIFI_MODE_WIFI_PROCESSING;
             }
             else
             {
                 wifiMode = WIFI_MODE_COOPERATIVE_PROCESSING;
             }
-            /*                logger.addLine("WIFI PROCESSING MODE:" + String(wifiMode));
-             */
+            printf ("wifiMode ");
+            
         }
             break;
         case MSG_CMD_REPORT_WIFI_STATUS:
         {
-            printf (" Report WiFi status: ");
+           
+            printf (" Report WiFi status: " );
             canQuery = true;
             tuya_mcu_send_cmd (MSG_CMD_QUERY_DEVICE_STATUS);
+            
         }
             break;
         case MSG_CMD_RESET_WIFI_SWITCH_NET_CFG:

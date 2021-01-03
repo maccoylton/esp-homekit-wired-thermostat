@@ -92,7 +92,7 @@ uint8_t uart_port=0;
 
 void set_current_state(){
     /* the BHT 002 doesn't have a curent state, so need to compare current and target temperate */
-    printf ("%s: target state: %d, current state: %d, target temp: %2.1f, current temp:%2.1f", __func__, target_state.value.int_value, current_state.value.int_value, target_temperature.value.float_value ,current_temperature.value.float_value);
+    printf ("%s: target state: %d, current state: %d, target temp: %2.1f, current temp:%2.1f ", __func__, target_state.value.int_value, current_state.value.int_value, target_temperature.value.float_value ,current_temperature.value.float_value);
     switch (target_state.value.int_value){
         case 0: /* off */
             current_state.value = HOMEKIT_UINT8 (0);
