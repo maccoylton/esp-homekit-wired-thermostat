@@ -11,8 +11,8 @@
 #include <FreeRTOS.h>
 #include <task.h>
 
-static const uint8_t MAX_BUFFER_LENGTH = 128;
-static const uint8_t TUYA_MCU_HEADER_SIZE = 7;
+#define MAX_BUFFER_LENGTH 128
+#define TUYA_MCU_HEADER_SIZE 7
 
 extern bool sendWifiStateMsg;
 extern uint8_t uart_port;
@@ -20,6 +20,12 @@ extern bool    gotHeartbeat;
 extern bool    gotProdKey;
 extern bool    gotWifiMode;
 extern bool    timeAvailable;
+extern uint8_t mcu_init_stage;
+extern uint8_t msg[]; /* used for recevie */
+extern uint8_t payload[];
+extern uint8_t messageToSend[]; /* used for send */
+
+
 
 enum message_indexes
 {

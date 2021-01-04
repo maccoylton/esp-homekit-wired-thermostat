@@ -17,7 +17,12 @@ bool    resetBuffer = false;
 uint32_t currentByte = 0;
 uint8_t dataLength = 0;
 uint32_t lastMS = 0;
+uint8_t mcu_init_stage = 0;
 
+/* declare these as global to avoid fragmentation */
+uint8_t msg[MAX_BUFFER_LENGTH];
+uint8_t payload[MAX_BUFFER_LENGTH-TUYA_MCU_HEADER_SIZE];
+uint8_t messageToSend[MAX_BUFFER_LENGTH];
 
 
 bool tuya_mcu_getTime(int dayOfWeek, int hour, int minutes)
@@ -62,7 +67,7 @@ long long tuya_mcu_get_millis() {
 
 
 bool serial_available(){
-    printf ("%s: ", __func__);
+    //printf ("%s: ", __func__);
     
     if (uart_rxfifo_wait(uart_port,0) == 0){
         //printf ("nothing to read. End: ");
@@ -241,7 +246,7 @@ bool tuya_mcu_message_is_valid(uint8_t msg[])
         if (message_length < TUYA_MCU_HEADER_SIZE)
             printf ("invalid message length %d: ", message_length);
         if ( checksum != msg[message_length - 1] )
-            printf ("invalid checkum, calculated %d, received %d, length: %d: ", checksum, (uint8_t) msg[message_length - 1], message_length );
+            printf ("invalid checskum, calculated %d, received %d, length: %d: ", checksum, (uint8_t) msg[message_length - 1], message_length );
         return false;
     }
 }
@@ -312,27 +317,21 @@ void tuya_mcu_set_payload(uint8_t msg[], uint8_t* payload, uint8_t payload_lengt
 
 void tuya_mcu_send_cmd(uint8_t cmd)
 {
-    printf ("%s: %0x02X", __func__, cmd);
-    uint8_t msg[MAX_BUFFER_LENGTH];
+    printf ("%s: 0x%02X ", __func__, cmd);
     
-    msg[E_MAGIC1] = 0x55;
-    msg[E_MAGIC2] = 0xaa;
-    msg[E_VERSION] = 0;
-    msg[E_CMD] = cmd;
-    tuya_mcu_set_payload_length(msg,0);
-    tuya_mcu_set_checksum (msg);
+    messageToSend[E_MAGIC1] = 0x55;
+    messageToSend[E_MAGIC2] = 0xaa;
+    messageToSend[E_VERSION] = 0;
+    messageToSend[E_CMD] = cmd;
+    tuya_mcu_set_payload_length(messageToSend,0);
+    tuya_mcu_set_checksum (messageToSend);
     
-    if (tuya_mcu_message_is_valid(msg))
+    if (tuya_mcu_message_is_valid(messageToSend))
     {
         //tuya_mcu_print_message (msg, true);
-        serial_write(msg, tuya_mcu_get_msg_length (msg));
-        /*        logger.addBytes("TX:", msg, msg.getLength());    }
-         else
-         {
-         logger.addBytes("TX INVALID MSG:", msg, msg.getLength());
-         */
+        serial_write(messageToSend, tuya_mcu_get_msg_length (messageToSend));
     } else {
-        tuya_mcu_print_message (msg, false);
+        tuya_mcu_print_message (messageToSend, false);
     }
     printf ("End\n");
 }
@@ -342,25 +341,19 @@ void tuya_mcu_send_message(uint8_t cmd, uint8_t payload[], uint8_t payload_lengt
 {
     printf ("%s: ", __func__);
     
-    uint8_t msg[MAX_BUFFER_LENGTH];
+    uint8_t messageToSend[MAX_BUFFER_LENGTH];
     
-    msg[E_MAGIC1] = 0x55;
-    msg[E_MAGIC2] = 0xaa;
-    msg[E_VERSION] = 0x00;
-    msg[E_CMD] = cmd;
-    tuya_mcu_set_payload_length(msg,payload_length);
-    tuya_mcu_set_payload ( msg, payload, payload_length);
-    tuya_mcu_set_checksum (msg);
+    messageToSend[E_MAGIC1] = 0x55;
+    messageToSend[E_MAGIC2] = 0xaa;
+    messageToSend[E_VERSION] = 0x00;
+    messageToSend[E_CMD] = cmd;
+    tuya_mcu_set_payload_length(messageToSend,payload_length);
+    tuya_mcu_set_payload ( messageToSend, payload, payload_length);
+    tuya_mcu_set_checksum (messageToSend);
     
-    if (tuya_mcu_message_is_valid(msg))
+    if (tuya_mcu_message_is_valid(messageToSend))
     {
-        
-        serial_write(msg, tuya_mcu_get_msg_length (msg));
-        /*        logger.addBytes("TX:", msg, msg.getLength());    }
-         else
-         {
-         logger.addBytes("TX INVALID MSG:", msg, msg.getLength());
-         */
+        serial_write(msg, tuya_mcu_get_msg_length (messageToSend));
     }
     printf (": End: ");
     
@@ -439,7 +432,7 @@ void tuya_mcu_setWifiState(WifiState_t newState)
         
         if (gotWifiMode)
         {
-            uint8_t payload[1] = {(uint8_t)wifiState};
+            payload[0] = (uint8_t)wifiState;
             tuya_mcu_send_message (MSG_CMD_REPORT_WIFI_STATUS, payload, 1);
             sendWifiStateMsg = false;
         } else
