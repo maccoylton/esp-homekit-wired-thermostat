@@ -11,7 +11,7 @@
 #include <FreeRTOS.h>
 #include <task.h>
 
-#define MAX_BUFFER_LENGTH 128
+#define MAX_BUFFER_LENGTH 256
 #define TUYA_MCU_HEADER_SIZE 7
 
 extern bool sendWifiStateMsg;
@@ -140,5 +140,13 @@ bool getTimeAvailable();
 
 bool tuya_mcu_msg_buffer_addbyte(uint8_t byte, uint8_t msg[]);
 
+void tuya_mcu_processRx();
+
+void tuya_mcu_process_message(uint8_t msg[]);
+
+void tuya_mcu_sendTime(bool timeAvailable);
+
+
+WifiMode_t wifiMode;
 
 #endif

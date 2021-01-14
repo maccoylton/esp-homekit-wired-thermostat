@@ -52,14 +52,14 @@ extern thermostat_mode_t mode;
 extern bool economyOn;
 extern bool locked;
 extern uint8_t schedule[54];
-WifiMode_t wifiMode;
+
 
 extern bool externalTempSensor;
 
 
 //tuya_thermostat my_thermostat;
 
-void tuya_thermostat_handleDPStatusMsg(uint8_t msg[]);
+void tuya_handleDPStatusMsg(uint8_t msg[]);
 void tuya_thermostat_process_message(uint8_t msg[]);
 void tuya_thermostat_processTx(bool timeAvailable);
 void tuya_thermostat_sendTime(bool timeAvailable);

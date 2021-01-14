@@ -18,11 +18,200 @@ uint32_t currentByte = 0;
 uint8_t dataLength = 0;
 uint32_t lastMS = 0;
 uint8_t mcu_init_stage = 0;
+uint8_t mcuProtocolVersion = 0;
+bool    canQuery = false;
 
 /* declare these as global to avoid fragmentation */
 uint8_t msg[MAX_BUFFER_LENGTH];
 uint8_t payload[MAX_BUFFER_LENGTH-TUYA_MCU_HEADER_SIZE];
 uint8_t messageToSend[MAX_BUFFER_LENGTH];
+
+
+void tuya_mcu_sendTime(bool timeAvailable)
+{
+    static uint8_t sendTimeCmd[8]= {01,00,00,00,00,00,00,00};
+    printf ("%s: timeAvailbale: %s, can query: %s", __func__, timeAvailable ? "True" : "False", canQuery ? "True" : "False");
+    struct tm* new_time = NULL;
+    if (timeAvailable)
+    {
+        struct timezone tz = {0};
+        struct timeval tv = {0};
+        
+        gettimeofday(&tv, &tz);
+        
+        time_t tnow = time(NULL);
+        
+        // localtime / gmtime every second change
+        static time_t nexttv = 0;
+        if (nexttv < tv.tv_sec && canQuery)
+        {
+            nexttv = tv.tv_sec + 3600; // update every hour
+            new_time = localtime(&tnow);
+        }
+    }
+    
+    if (new_time != NULL)
+    {
+        // weekday: 0 = monday, 6 = sunday
+        sendTimeCmd[7] = (new_time->tm_wday == 0 ? 7 : new_time->tm_wday);
+        sendTimeCmd[6] = new_time->tm_sec;
+        sendTimeCmd[5] = new_time->tm_min;
+        sendTimeCmd[4] = new_time->tm_hour;
+        sendTimeCmd[3] = new_time->tm_mday;
+        sendTimeCmd[2] = new_time->tm_mon  + 1;
+        sendTimeCmd[1] = new_time->tm_year % 100;
+        tuya_mcu_send_message(MSG_CMD_OBTAIN_LOCAL_TIME, sendTimeCmd, 8);
+    }
+    printf (" End\n");
+}
+
+
+void tuya_mcu_processRx()
+{
+    printf ("%s: \n", __func__);
+    bool hasMsg = false;
+    if (serial_available())
+    {
+        while (serial_available())
+        {
+            hasMsg = tuya_mcu_msg_buffer_addbyte(serial_read(), msg);
+            if (hasMsg)
+            {
+                tuya_mcu_process_message(msg);
+                printf ( " MCU Init Stage: %d ", mcu_init_stage );
+            }
+        }
+    }
+    printf (":End\n");
+}
+
+
+void tuya_mcu_process_message(uint8_t msg[])
+{
+    printf ("\n\n%s: ", __func__);
+    
+    if (!tuya_mcu_message_is_valid(msg))
+    {
+        tuya_mcu_print_message (msg, false);
+        return;
+    } else {
+        //tuya_mcu_print_message(msg, true);
+    }
+    
+    uint8_t cmd = tuya_mcu_get_command(msg);
+    printf ("CMD: 0x%02X", cmd );
+    
+    mcuProtocolVersion = tuya_mcu_get_version(msg);
+    uint8_t payload_length = tuya_mcu_get_payload ( msg, payload);
+    
+    switch(cmd)
+    {
+        case MSG_CMD_HEARTBEAT:
+        {
+            printf (" Heartbeat: ");
+            //uint8_t payload_length = tuya_mcu_get_payload ( msg, payload);
+            if (1 == payload_length)
+            {
+                if (1 != payload[0]){
+                    /* 0x01: this value is returned except for the first return value of 0 after the MCU reboots.*/
+                    
+                    sendWifiStateMsg = true;
+                    printf (" MCU First Heartbeat");
+                    /* if we get another zero then MCU has reset */
+                }
+                if (!gotHeartbeat)
+                {
+                    gotHeartbeat = true;
+                    
+                    if (!gotProdKey)
+                    {
+                        tuya_mcu_send_cmd(MSG_CMD_QUERY_PROD_INFO);
+                        mcu_init_stage++;
+                    }
+                }
+            } else
+                printf (" INVALID heartbeat length: ");
+        }
+            break;
+        case MSG_CMD_QUERY_PROD_INFO:
+        {
+            printf (" Query Prod Info: ");
+            if ( mcu_init_stage == 2) mcu_init_stage++;
+            
+            if (tuya_mcu_get_payload_length(msg))
+            {
+                gotProdKey = true;
+                
+                if (!gotWifiMode)
+                {
+                    tuya_mcu_send_cmd (MSG_CMD_QUERY_WIFI_MODE);
+                    mcu_init_stage++;
+                }
+            }
+        }
+            break;
+        case MSG_CMD_QUERY_WIFI_MODE:
+        {
+            printf (" Query Wifi mode, got WiFi Mode: ");
+            if ( mcu_init_stage == 4) mcu_init_stage++;
+            
+            
+            gotWifiMode = true;
+            
+            //uint8_t payload_length = tuya_mcu_get_payload ( msg, payload);
+            if ( payload_length== 2)
+            {
+                uint8_t wifi_indicator_pin = payload[0];
+                uint8_t reset_pin = payload[1];
+                wifiMode = WIFI_MODE_WIFI_PROCESSING;
+            }
+            else
+            {
+                wifiMode = WIFI_MODE_COOPERATIVE_PROCESSING;
+            }
+            printf ("wifiMode ");
+            
+        }
+            break;
+        case MSG_CMD_REPORT_WIFI_STATUS:
+        {
+            
+            printf (" Report WiFi status: " );
+            canQuery = true;
+            tuya_mcu_send_cmd (MSG_CMD_QUERY_DEVICE_STATUS);
+            mcu_init_stage++;
+            
+        }
+            break;
+        case MSG_CMD_RESET_WIFI_SWITCH_NET_CFG:
+        {
+            printf (" Reset Wifi: ");
+            tuya_mcu_send_cmd (MSG_CMD_RESET_WIFI_SWITCH_NET_CFG);
+            
+            /* need to sort this                if (wifiConfigCallback)
+             {
+             tuya_mcu_setWifiState(WIFI_STATE_SMART_CONFIG);
+             wifiConfigCallback();
+             }
+             */
+        }
+            break;
+        case MSG_CMD_DP_STATUS:
+        {
+            printf (" Status: ");
+            if (tuya_mcu_get_payload_length(msg))
+            {
+                tuya_handleDPStatusMsg(msg);
+            }
+            if (mcu_init_stage==6) mcu_init_stage++;
+        }
+            break;
+        default:
+            // unknown command
+            printf (" unknown command: ");
+            break;
+    }
+}
 
 
 bool tuya_mcu_getTime(int dayOfWeek, int hour, int minutes)
@@ -63,7 +252,6 @@ long long tuya_mcu_get_millis() {
      return te.tv_sec * 1000LL + te.tv_usec / 1000;*/
     return xTaskGetTickCount() * portTICK_PERIOD_MS;
 }
-
 
 
 bool serial_available(){
@@ -216,6 +404,7 @@ void tuya_mcu_set_checksum(uint8_t msg[])
     //printf ("%s: End\n", __func__);
 }
 
+
 void tuya_mcu_print_message (uint8_t msg[], bool valid){
     
     uint8_t message_length = MAX_BUFFER_LENGTH;
@@ -282,6 +471,7 @@ uint8_t tuya_mcu_get_payload(uint8_t msg[], uint8_t payload[])
     return (payload_length);
 }
 
+
 void tuya_mcu_set_payload_length(uint8_t msg[], uint8_t payload_length)
 {
     //printf ("%s: Start\n", __func__);
@@ -297,6 +487,7 @@ void tuya_mcu_set_payload_length(uint8_t msg[], uint8_t payload_length)
     }
     //printf ("%s: End\n", __func__);
 }
+
 
 void tuya_mcu_set_payload(uint8_t msg[], uint8_t* payload, uint8_t payload_length)
 {
@@ -356,8 +547,8 @@ void tuya_mcu_send_message(uint8_t cmd, uint8_t payload[], uint8_t payload_lengt
         serial_write(msg, tuya_mcu_get_msg_length (messageToSend));
     }
     printf (": End: ");
-    
 }
+
 
 void tuya_mcu_updateWifiState()
 {
@@ -395,7 +586,6 @@ void tuya_mcu_updateWifiState()
     }
     printf ("End\n");
 }
-
 
 
 void tuya_mcu_sendHeartbeat()
