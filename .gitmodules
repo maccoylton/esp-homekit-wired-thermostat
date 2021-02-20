@@ -19,3 +19,6 @@
 [submodule "components/esp-wifi-config"]
 	path = components/esp-wifi-config
 	url = https://github.com/maximkulkin/esp-wifi-config
+[submodule "components/tuya_mcu"]
+	path = components/tuya_mcu
+	url = https://github.com/maccoylton/tuya_mcu.git

@@ -39,6 +39,11 @@
 #include <tuya_thermostat.h>
 #include <tuya_mcu.h>
 
+#ifdef EXTRAS_TIMEKEEPING
+    #include <sntp_impl.h>
+#endif
+
+
 // add this section to make your device OTA capable
 // create the extra characteristic &ota_trigger, at the end of the primary service (before the NULL)
 // it can be used in Eve, which will show it, where Home does not
@@ -301,12 +306,16 @@ void accessory_init_not_paired (void) {
 
 void accessory_init (void ){
     /* initalise anything you don't want started until wifi and pairing is confirmed */
+
     setup_sntp();
-    sntp_on = true;
-    /* used in homekit common functions */
-    timeAvailable = true;
-    /* uglobla used in tuya_mcu, set after sntp is initialised*/
+    
+    timeAvailable = sntp_on;
+    /* global  used in tuya_mcu, set after sntp is initialised*/
+    
     uart_set_baud(uart_port, 9600);
+    
+    tuya_mcu_init();
+    
     xTaskCreate(tuya_thermostat_loop, "tuya_thermostat_loop", 768 , NULL, tskIDLE_PRIORITY+1, NULL);
     
     load_characteristic_from_flash(&wifi_check_interval);

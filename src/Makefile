@@ -9,14 +9,16 @@ EXTRA_COMPONENTS = \
 	$(abspath ../components/esp-wolfssl) \
 	$(abspath ../components/esp-cjson) \
 	$(abspath ../components/esp-homekit) \
-        $(abspath ../components/esp-adv-button) \
+    $(abspath ../components/esp-adv-button) \
     $(abspath ../components/UDPlogger)\
     $(abspath ../components/esp-wifi-config) \
     $(abspath ../components/esp-homekit-common-functions/led_codes)\
     $(abspath ../components/esp-homekit-common-functions/ota)\
     $(abspath ../components/esp-homekit-common-functions/custom_characteristics)\
-    $(abspath ../components/esp-homekit-common-functions/shared_functions)
-
+    $(abspath ../components/esp-homekit-common-functions/shared_functions) \
+    $(abspath ../components/tuya_mcu)
+#    $(abspath ../components/sntp-impl)
+#    extras/timekeeping  
 
 
 FLASH_SIZE ?= 8
@@ -33,8 +35,10 @@ EXTRA_CFLAGS += -I../.. -DHOMEKIT_SHORT_APPLE_UUIDS
 EXTRA_CFLAGS += -DHOMEKIT_OVERCLOCK_PAIR_VERIFY
 EXTRA_CFLAGS += -DHOMEKIT_OVERCLOCK_PAIR_SETUP
 EXTRA_CFLAGS += -DUDPLOG_PRINTF_TO_UDP
-#EXTRA_CFLAGS += -DUDPLOG_PRINTF_ALSO_SERIAL
+EXTRA_CFLAGS += -DUDPLOG_PRINTF_ALSO_SERIAL
 EXTRA_CFLAGS += -DconfigUSE_TRACE_FACILITY
+EXTRA_CFLAGS += -DEXTRAS_SNTP
+#EXTRA_CFLAGS += -DEXTRAS_TIMEKEEPING
 
 include $(SDK_PATH)/common.mk
 
