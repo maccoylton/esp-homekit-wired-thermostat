@@ -131,7 +131,7 @@ void set_external_temp_sensor (homekit_value_t value){
 
 void set_target_temperature (homekit_value_t value){
     /* called when the IOS device updates the value */
-    printf ("%s: %2.1f", __func__, value.float_value);
+    printf ("%s: %2.1f ", __func__, value.float_value);
     target_temperature.value = HOMEKIT_FLOAT(value.float_value);
     homekit_characteristic_bounds_check(&target_temperature);
     sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
@@ -316,7 +316,7 @@ void accessory_init (void ){
     
     tuya_mcu_init();
     
-    xTaskCreate(tuya_thermostat_loop, "tuya_thermostat_loop", 768 , NULL, tskIDLE_PRIORITY+1, NULL);
+    xTaskCreate(tuya_mcu_loop, "tuya_mcu_loop", 768 , NULL, tskIDLE_PRIORITY+1, NULL);
     
     load_characteristic_from_flash(&wifi_check_interval);
     homekit_characteristic_notify(&wifi_check_interval, wifi_check_interval.value);
