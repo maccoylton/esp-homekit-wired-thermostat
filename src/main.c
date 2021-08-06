@@ -315,8 +315,7 @@ void accessory_init (void ){
     uart_set_baud(uart_port, 9600);
     
     tuya_mcu_init();
-    
-    xTaskCreate(tuya_mcu_loop, "tuya_mcu_loop", 768 , NULL, tskIDLE_PRIORITY+1, NULL);
+    xTaskCreate(tuya_mcu_init, "tuya_mcu_init", 512 , NULL, tskIDLE_PRIORITY+1, NULL);
     
     load_characteristic_from_flash(&wifi_check_interval);
     homekit_characteristic_notify(&wifi_check_interval, wifi_check_interval.value);
