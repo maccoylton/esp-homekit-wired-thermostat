@@ -71,19 +71,19 @@ void set_target_temperature (homekit_value_t value);
 void set_target_state (homekit_value_t value);
 void set_external_temp_sensor (homekit_value_t value);
 
-homekit_characteristic_t current_temperature = HOMEKIT_CHARACTERISTIC_( CURRENT_TEMPERATURE, 0);
+homekit_characteristic_t current_temperature = HOMEKIT_CHARACTERISTIC_( CURRENT_TEMPERATURE, 0, .min_step = (float[]) {0.5});
 
-homekit_characteristic_t target_temperature  = HOMEKIT_CHARACTERISTIC_( TARGET_TEMPERATURE, 22, .setter = set_target_temperature);
+homekit_characteristic_t target_temperature  = HOMEKIT_CHARACTERISTIC_( TARGET_TEMPERATURE, 22, .min_step = (float[]) {0.5}, .setter = set_target_temperature);
 
 homekit_characteristic_t units               = HOMEKIT_CHARACTERISTIC_( TEMPERATURE_DISPLAY_UNITS, 0 );
 
-homekit_characteristic_t current_state       = HOMEKIT_CHARACTERISTIC_( CURRENT_HEATING_COOLING_STATE, 0);
+homekit_characteristic_t current_state       = HOMEKIT_CHARACTERISTIC_( CURRENT_HEATING_COOLING_STATE, 0, .valid_values={.count=2, .values=(uint8_t[]) {0,1}});
 
-homekit_characteristic_t target_state        = HOMEKIT_CHARACTERISTIC_( TARGET_HEATING_COOLING_STATE, 0,  .setter = set_target_state );
+homekit_characteristic_t target_state        = HOMEKIT_CHARACTERISTIC_( TARGET_HEATING_COOLING_STATE, 0,  .valid_values={.count=2, .values=(uint8_t[]) {0,1}}, .setter = set_target_state );
 
-homekit_characteristic_t cooling_threshold   = HOMEKIT_CHARACTERISTIC_( COOLING_THRESHOLD_TEMPERATURE, 25 );
+//homekit_characteristic_t cooling_threshold   = HOMEKIT_CHARACTERISTIC_( COOLING_THRESHOLD_TEMPERATURE, 25 );
 
-homekit_characteristic_t heating_threshold   = HOMEKIT_CHARACTERISTIC_( HEATING_THRESHOLD_TEMPERATURE, 15 );
+//homekit_characteristic_t heating_threshold   = HOMEKIT_CHARACTERISTIC_( HEATING_THRESHOLD_TEMPERATURE, 15 );
 homekit_characteristic_t external_temp_sensor = HOMEKIT_CHARACTERISTIC_(CUSTOM_EXTERNALTEMP_SENSOR, false, .setter = set_external_temp_sensor);
 
 // The GPIO pin that is oconnected to the button on the wired thermostat controller.
@@ -96,7 +96,6 @@ int led_off_value = -1;
 uint8_t uart_port=0;
 
 void set_current_state(){
-    /* the BHT 002 doesn't have a curent state, so need to compare current and target temperate */
     printf ("%s: target state: %d, current state: %d, target temp: %2.1f, current temp:%2.1f ", __func__, target_state.value.int_value, current_state.value.int_value, target_temperature.value.float_value ,current_temperature.value.float_value);
     switch (target_state.value.int_value){
         case 0: /* off */
@@ -104,7 +103,8 @@ void set_current_state(){
             break;
         case 1: /* heat */
         {
-            if ( current_temperature.value.float_value < target_temperature.value.float_value )
+            /* the BHT 002 doesn't have a curent state, so need to compare current and target temperate */
+            if ( current_temperature.value.float_value < (target_temperature.value.float_value) )
                 current_state.value = HOMEKIT_UINT8 (1);
             else
                 current_state.value = HOMEKIT_UINT8 (0);
@@ -122,9 +122,14 @@ void set_current_state(){
 
 void set_external_temp_sensor (homekit_value_t value){
     
-    printf ("%s: %f", __func__, value.float_value);
+    printf ("%s: %s", __func__, value.bool_value ? "true" : "false");
     externalTempSensor = value.bool_value;
     sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+    if (externalTempSensor == true) {
+        tuya_thermostat_emitChange (CHANGE_TYPE_EXTERNAL_TEMP);
+    } else {
+        tuya_thermostat_emitChange (CHANGE_TYPE_INTERNAL_TEMP);
+    }
     printf ("%s: end\n", __func__);
     
 }
@@ -135,11 +140,12 @@ void set_target_temperature (homekit_value_t value){
     target_temperature.value = HOMEKIT_FLOAT(value.float_value);
     homekit_characteristic_bounds_check(&target_temperature);
     sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+    set_current_state();
+    /* save routine will also notify MCU of new target temperature to avoid bounce */
+
     printf (" target temperature: %2.1f\n", target_temperature.value.float_value);
     homekit_characteristic_notify(&target_temperature, target_temperature.value);
-    tuya_thermostat_setSetPointTemp (value.float_value, true);
-    set_current_state();
-    /* if the target temperature has changed then the current state may have chnage */
+    /* if the target temperature has changed then the current state may have changed */
     
 }
 
@@ -184,14 +190,14 @@ void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
     printf ("%s: emit command : ", __func__);
     switch (cmd){
         case CHANGE_TYPE_POWER:
-            printf (" power on: %d\n", powerOn);
+            printf (" power on: %d, target state:%d\n", powerOn, target_state.value.int_value);
             target_state.value = HOMEKIT_UINT8(powerOn ? 1 : 0);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&target_state, target_state.value);
             set_current_state();
             break;
         case CHANGE_TYPE_SETPOINT_TEMP:
-            printf (" target temperature: %f\n", setPointTemp);
+            printf (" setPoint: %f, target temperature: %f\n", setPointTemp, target_temperature.value.float_value);
             target_temperature.value = HOMEKIT_FLOAT(setPointTemp);
             homekit_characteristic_bounds_check(&target_temperature);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
@@ -199,7 +205,7 @@ void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
             set_current_state();
             break;
         case CHANGE_TYPE_INTERNAL_TEMP:
-            printf (" current temperature: %f\n", internalTemp);
+            printf (" internalTemp: %f, current temperature: %f\n", internalTemp, current_temperature.value.float_value);
             current_temperature.value = HOMEKIT_FLOAT(internalTemp);
             homekit_characteristic_bounds_check(&current_temperature);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
@@ -251,8 +257,8 @@ homekit_accessory_t *accessories[] = {
             &target_temperature,
             &current_state,
             &target_state,
-            &cooling_threshold,
-            &heating_threshold,
+//            &cooling_threshold,
+//            &heating_threshold,
             &units,
             &external_temp_sensor,
             &ota_trigger,
@@ -296,6 +302,9 @@ void save_characteristics ( ){
     save_characteristic_to_flash (&target_state, target_state.value);
     save_characteristic_to_flash (&external_temp_sensor, external_temp_sensor.value);
     save_characteristic_to_flash(&wifi_check_interval, wifi_check_interval.value);
+    
+    /* do this hear to stop temperature bounce */
+    tuya_thermostat_setSetPointTemp (target_temperature.value.float_value, true);
 }
 
 
@@ -312,22 +321,25 @@ void accessory_init (void ){
     timeAvailable = sntp_on;
     /* global  used in tuya_mcu, set after sntp is initialised*/
     
-    uart_set_baud(uart_port, 9600);
-    
-    tuya_mcu_init();
-    /* move to inside tuya_mcu_init - xTaskCreate(tuya_mcu_init, "tuya_mcu_init", 512 , NULL, tskIDLE_PRIORITY+1, NULL); */
-    
     load_characteristic_from_flash(&wifi_check_interval);
     homekit_characteristic_notify(&wifi_check_interval, wifi_check_interval.value);
     
     load_characteristic_from_flash(&target_temperature);
     homekit_characteristic_notify (&target_temperature, target_temperature.value);
-    tuya_thermostat_setSetPointTemp (target_temperature.value.float_value, true);
     
     load_characteristic_from_flash(&target_state);
     homekit_characteristic_notify (&target_state, target_state.value);
     tuya_thermostat_setPower( (target_state.value.int_value == 1 )? true : false , true);
     
+    task_stats.value.bool_value = true;
+    task_stats_set (task_stats.value);
+    
+
+    tuya_mcu_init();
+    uart_set_baud(uart_port, 9600);
+    /* move to inside tuya_mcu_init - xTaskCreate(tuya_mcu_init, "tuya_mcu_init", 512 , NULL, tskIDLE_PRIORITY+1, NULL); */
+    /*tuya_thermostat_setSetPointTemp (target_temperature.value.float_value, true);*/
+
 }
 
 void user_init(void) {
