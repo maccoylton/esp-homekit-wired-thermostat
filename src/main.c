@@ -14,7 +14,7 @@
 #define DEVICE_NAME "wired-thermostat"
 #define DEVICE_MODEL "2"
 #define DEVICE_SERIAL "12345678"
-#define FW_VERSION "1.1.2"
+#define FW_VERSION "1.1.3"
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>
