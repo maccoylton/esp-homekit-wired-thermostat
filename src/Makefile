@@ -6,17 +6,17 @@ EXTRA_COMPONENTS = \
 	extras/http-parser \
 	extras/rboot-ota \
     extras/sntp \
-	$(abspath ../components/esp-wolfssl) \
-	$(abspath ../components/esp-cjson) \
-	$(abspath ../components/esp-homekit) \
-    $(abspath ../components/esp-adv-button) \
-    $(abspath ../components/UDPlogger)\
-    $(abspath ../components/esp-wifi-config) \
-    $(abspath ../components/esp-homekit-common-functions/led_codes)\
-    $(abspath ../components/esp-homekit-common-functions/ota)\
-    $(abspath ../components/esp-homekit-common-functions/custom_characteristics)\
-    $(abspath ../components/esp-homekit-common-functions/shared_functions) \
-    $(abspath ../components/tuya_mcu)
+	$(abspath ../../components/esp-wolfssl) \
+	$(abspath ../../components/esp-cjson) \
+	$(abspath ../../components/esp-homekit) \
+    $(abspath ../../components/esp-adv-button) \
+    $(abspath ../../components/UDPlogger)\
+    $(abspath ../../components/esp-wifi-config) \
+    $(abspath ../../components/esp-homekit-common-functions/led_codes)\
+    $(abspath ../../components/esp-homekit-common-functions/ota)\
+    $(abspath ../../components/esp-homekit-common-functions/custom_characteristics)\
+    $(abspath ../../components/esp-homekit-common-functions/shared_functions) \
+    $(abspath ../../components/tuya_mcu)
 #    $(abspath ../components/sntp-impl)
 #    extras/timekeeping  
 
