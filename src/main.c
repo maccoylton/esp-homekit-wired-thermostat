@@ -14,7 +14,7 @@
 #define DEVICE_NAME "wired-thermostat"
 #define DEVICE_MODEL "2"
 #define DEVICE_SERIAL "12345678"
-#define FW_VERSION "1.1.6"
+#define FW_VERSION "1.1.7"
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>
@@ -112,6 +112,7 @@ void set_current_state(){
                 current_state.value = HOMEKIT_UINT8 (1);
             else
                 current_state.value = HOMEKIT_UINT8 (0);
+            break;
         }
         case 2: /* cool */
         case 3: /* auto */
