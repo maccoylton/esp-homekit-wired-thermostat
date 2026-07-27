@@ -1,0 +1,40 @@
+{
+    "configurations": [{
+        "name": "esp-open-rtos",
+        "includePath": [
+            "${workspaceFolder}/src",
+            "${workspaceFolder}/../components/tuya_mcu",
+            "${workspaceFolder}/../components/esp-adv-button",
+            "${workspaceFolder}/../components/esp-homekit/include",
+            "${workspaceFolder}/../components/esp-wifi-config/include",
+            "${workspaceFolder}/../components/UDPlogger",
+            "${workspaceFolder}/../components/esp-homekit-common-functions/led_codes",
+            "${workspaceFolder}/../components/esp-homekit-common-functions/ota",
+            "${workspaceFolder}/../components/esp-homekit-common-functions/custom_characteristics",
+            "${workspaceFolder}/../components/esp-homekit-common-functions/shared_functions",
+            "${workspaceFolder}/../esp-open-rtos/include",
+            "${workspaceFolder}/../esp-open-rtos/core/include",
+            "${workspaceFolder}/../esp-open-rtos/extras/rboot-ota",
+            "${workspaceFolder}/../esp-open-rtos/bootloader",
+            "${workspaceFolder}/../esp-open-rtos/FreeRTOS/Source/include",
+            "${workspaceFolder}/../esp-open-rtos/FreeRTOS/Source/portable/esp8266",
+            "${workspaceFolder}/../esp-open-rtos/lwip/lwip/src/include",
+            "${workspaceFolder}/../esp-open-rtos/lwip/include",
+            "${workspaceFolder}/../esp-open-rtos/open_esplibs/include",
+            "${workspaceFolder}/.vscode",
+            "${workspaceFolder}/../esp-open-rtos/libc/xtensa-lx106-elf/include"
+        ],
+        "defines": [
+            "HOMEKIT_SHORT_APPLE_UUIDS",
+            "HOMEKIT_MAX_CLIENTS=16",
+            "UDPLOG_PRINTF_TO_UDP",
+            "UDPLOG_PRINTF_ALSO_SERIAL",
+            "configUSE_TRACE_FACILITY",
+            "ESP8266"
+        ],
+        "compilerPath": "/usr/bin/clang",
+        "cStandard": "c11",
+        "intelliSenseMode": "macos-gcc-arm64"
+    }],
+    "version": 4
+}

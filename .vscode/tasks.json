@@ -1,0 +1,36 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build firmware",
+            "type": "shell",
+            "command": "docker run --rm --platform linux/amd64 -v ${workspaceFolder}/..:/project -e SDK_PATH=/project/esp-open-rtos espbuilder make -C /project/esp-homekit-wired-thermostat/src -j4",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "Build bootloader",
+            "type": "shell",
+            "command": "docker run --rm --platform linux/amd64 -v ${workspaceFolder}/..:/project -e SDK_PATH=/project/esp-open-rtos espbuilder make -C /project/esp-open-rtos/bootloader -j4",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build all (bootloader + firmware)",
+            "type": "shell",
+            "command": "docker run --rm --platform linux/amd64 -v ${workspaceFolder}/..:/project -e SDK_PATH=/project/esp-open-rtos espbuilder bash -c \"make -C /project/esp-open-rtos/bootloader -j4 && make -C /project/esp-homekit-wired-thermostat/src -j4\"",
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Clean build",
+            "type": "shell",
+            "command": "docker run --rm --platform linux/amd64 -v ${workspaceFolder}/..:/project -e SDK_PATH=/project/esp-open-rtos espbuilder bash -c \"make -C /project/esp-homekit-wired-thermostat/src clean && make -C /project/esp-homekit-wired-thermostat/src -j4\"",
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}
