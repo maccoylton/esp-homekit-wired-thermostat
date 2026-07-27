@@ -12,7 +12,7 @@ Project-level notes (OTA update mechanism, etc.) are in `../AGENTS.md`.
 ## Device Info
 
 - Manufacturer: maccoylton, Model: wired-thermostat
-- FW_VERSION: `1.1.7` in `src/main.c`
+- FW_VERSION: `1.1.8` in `src/main.c`
 - Button: GPIO 0, Status LED: GPIO 2 (off=-1)
 - Uses Tuya MCU component (`../../components/tuya_mcu`)
 - Flash: 1MB, dout, 40MHz
@@ -34,20 +34,28 @@ esptool.py -p /dev/cu.usbserial-XXXX -b 115200 write_flash -fs 1MB -fm dout -ff 
 
 Docker image: `espbuilder`, SDK_PATH: `/project/esp-open-rtos`. Run from `/Users/dave/Documents/OpenCode/esp-firmwares`.
 
+## Version History
+
+| Version | Changes |
+|---------|---------|
+| 1.1.7 | WiFi reconnect fix: station-status-based reconnect replaces broken DNS-counting logic. Confirmed via deauth test. |
+| 1.1.8 | DNS check removed from checkWifiTask (reduces fragmentation). Serial value leak fixed. 0x04/0x05/0xF4 reset handlers implemented then stripped (MCU never sends these commands — confirmation via UDP logging). |
+
 ## Key Findings
 
 ### Tuya MCU
 - Uses `tuya_mcu` component for Tuya-based thermostat hardware communication.
 - SNTP is included for timekeeping (`extras/sntp` component).
 - The Tuya MCU is a separate chip handling all buttons/display. ESP never sees individual button presses — only serial protocol commands over UART (9600 baud).
-- **0x04 handler (`MSG_CMD_RESET_WIFI_SWITCH_NET_CFG`) is a stub** — echoes ACK but never calls `sysparam_erase("wifi_*")` or `sdk_system_restart()`. Holding power button ~5s likely triggers this from MCU, but nothing happens.
-- **0x05 handler (`MSG_CMD_RESET_WIFI_SELECT_NET_CFG`) is missing entirely** — defined in enum but no case in switch.
-- **0xF4 (factory reset) not implemented** — would be stronger than 0x04, also clears device ID.
+- **Reset handlers (0x04/0x05/0xF4) were implemented in v1.1.8 then stripped** — UDP logging confirmed the BHT-002 MCU never sends these commands. The MCU handles buttons/display internally and only sends DP status messages. No physical button combo on this device triggers a reset command over UART.
 - Heartbeat intervals don't match Tuya spec (3s→10s instead of 1s→15s). Product info PID received but never validated. No MCU heartbeat-loss timeout.
 
 ### WiFi Reconnect Fix (v1.1.7)
 - Root cause: `checkWifiTask()` in `shared_functions.c` relied on DNS failure counting, but lwIP caches DNS results — `dns_error_count` never reaches 12 because cached `ERR_OK` resets it every cycle; the `sdk_system_restart()` path never fires.
 - Fix (branch `fix/wifi-reconnect` in `esp-homekit-common-functions`): use station status as primary indicator, active reconnect (disconnect+connect) after 3 consecutive failures, restart after 3 reconnect cycles exhausted.
+
+### Heap Fragmentation Fix (v1.1.8)
+- Removed `netconn_gethostbyname()` DNS check from `checkWifiTask()` — `STATION_GOT_IP` is now trusted directly, eliminating repeated lwIP UDP PCB allocate/free cycles every check interval that fragmented the heap.
 
 ### Versioning
 - FW_VERSION in `src/main.c` follows semver.
