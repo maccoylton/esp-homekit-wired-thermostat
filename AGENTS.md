@@ -61,12 +61,16 @@ Docker image: `espbuilder`, SDK_PATH: `/project/esp-open-rtos`. Run from `/Users
 - Runs every check cycle (default 60s), replacing the need for a separate "deep check" counter. The user-adjustable `wifi_check_interval` characteristic controls the frequency.
 - This catches the well-known ESP8266 SDK bug where `sdk_wifi_station_get_connect_status()` returns `STATION_GOT_IP` after a router reboot but data cannot actually be transmitted.
 
+### Stack Usage (v1.1.8 gateway check)
+- `CHECK_WIFI_STACK_SIZE` is 384 words (1536 bytes). The new `check_gateway_reachable()` function (non-blocking TCP socket + connect + select) leaves only ~22 bytes of free stack at the high-water mark. This is tight but functional — if it ever overflows, the CPU crashes and the device restarts (self-healing). Not worth bumping unless adding more code to `checkWifiTask`.
+
 ### Heap Fragmentation Fix (v1.1.8)
 - Removed `netconn_gethostbyname()` DNS check from `checkWifiTask()` — `STATION_GOT_IP` is now trusted directly, eliminating repeated lwIP UDP PCB allocate/free cycles every check interval that fragmented the heap.
 
 ### Versioning
 - FW_VERSION in `src/main.c` follows semver.
 - Release naming: tag `x.y.z`, title `vx.y.z-pre`, prerelease=true.
+- **CRITICAL: Release tags must NOT have a `v` prefix** (e.g. `1.1.8` not `v1.1.8`). The OTA code in `life-cycle-manager` constructs download URLs directly from the version string as `releases/download/{version}/{file}`. A tag like `v1.1.8` produces a 404 because the URL uses `1.1.8` but GitHub's tag is `v1.1.8`. The stable release `1.1.4` established this convention with a bare tag — all subsequent releases must match.
 
 ### Factory Reset / Recovery
 - **No physical button combo triggers factory reset** on BHT-002. Manual confirms factory reset is only via BecaSmart phone app (menu → Restore Manufacturer Defaults). `gpio_init()` in `main.c` is empty — no button handler was ever wired.
