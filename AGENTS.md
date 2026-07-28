@@ -39,7 +39,7 @@ Docker image: `espbuilder`, SDK_PATH: `/project/esp-open-rtos`. Run from `/Users
 | Version | Changes |
 |---------|---------|
 | 1.1.7 | WiFi reconnect fix: station-status-based reconnect replaces broken DNS-counting logic. Confirmed via deauth test. |
-| 1.1.8 | DNS check removed from checkWifiTask (reduces fragmentation). Serial value leak fixed. 0x04/0x05/0xF4 reset handlers implemented then stripped (MCU never sends these commands — confirmation via UDP logging). |
+| 1.1.8 | DNS check removed from checkWifiTask (reduces fragmentation). Serial value leak fixed. 0x04/0x05/0xF4 reset handlers implemented then stripped (MCU never sends these commands — confirmation via UDP logging). **Gateway reachability check added** — non-blocking TCP connect to router IP (from DHCP lease) to catch stale `STATION_GOT_IP` after reboot. Default `wifi_check_interval` changed from 10s to 60s. |
 
 ## Key Findings
 
@@ -53,6 +53,13 @@ Docker image: `espbuilder`, SDK_PATH: `/project/esp-open-rtos`. Run from `/Users
 ### WiFi Reconnect Fix (v1.1.7)
 - Root cause: `checkWifiTask()` in `shared_functions.c` relied on DNS failure counting, but lwIP caches DNS results — `dns_error_count` never reaches 12 because cached `ERR_OK` resets it every cycle; the `sdk_system_restart()` path never fires.
 - Fix (branch `fix/wifi-reconnect` in `esp-homekit-common-functions`): use station status as primary indicator, active reconnect (disconnect+connect) after 3 consecutive failures, restart after 3 reconnect cycles exhausted.
+
+### Gateway Reachability Check (v1.1.8)
+- After station status confirms `STATION_GOT_IP`, the device verifies it can actually reach the router by doing a **non-blocking TCP connect to port 443** on the gateway IP (obtained from `sdk_wifi_get_ip_info()`).
+- If the TCP handshake succeeds or returns `ECONNREFUSED` (RST from closed port), the router is reachable — the secondary check passes.
+- If the connect times out after 3 seconds (`select()` timeout), the gateway is unreachable — treated as stale `STATION_GOT_IP` → triggers reconnect/recovery flow like any other WiFi failure.
+- Runs every check cycle (default 60s), replacing the need for a separate "deep check" counter. The user-adjustable `wifi_check_interval` characteristic controls the frequency.
+- This catches the well-known ESP8266 SDK bug where `sdk_wifi_station_get_connect_status()` returns `STATION_GOT_IP` after a router reboot but data cannot actually be transmitted.
 
 ### Heap Fragmentation Fix (v1.1.8)
 - Removed `netconn_gethostbyname()` DNS check from `checkWifiTask()` — `STATION_GOT_IP` is now trusted directly, eliminating repeated lwIP UDP PCB allocate/free cycles every check interval that fragmented the heap.
