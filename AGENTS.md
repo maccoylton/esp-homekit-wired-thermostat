@@ -8,11 +8,12 @@ Project-level notes (OTA update mechanism, etc.) are in `../AGENTS.md`.
 
 - **Always propose changes and ask permission before applying.** Do not modify files, restart containers, or change config without explicit approval.
 - Explain exactly which file will be changed and what the change does before making it.
+- **Release notes must only contain user-facing changes.** Internal/dev notes (reset handler investigations, tag naming conventions, etc.) go in AGENTS.md only.
 
 ## Device Info
 
 - Manufacturer: maccoylton, Model: wired-thermostat
-- FW_VERSION: `1.1.8` in `src/main.c`
+- FW_VERSION: `1.1.10` in `src/main.c`
 - Button: GPIO 0, Status LED: GPIO 2 (off=-1)
 - Uses Tuya MCU component (`../../components/tuya_mcu`)
 - Flash: 1MB, dout, 40MHz
@@ -40,6 +41,8 @@ Docker image: `espbuilder`, SDK_PATH: `/project/esp-open-rtos`. Run from `/Users
 |---------|---------|
 | 1.1.7 | WiFi reconnect fix: station-status-based reconnect replaces broken DNS-counting logic. Confirmed via deauth test. |
 | 1.1.8 | DNS check removed from checkWifiTask (reduces fragmentation). Serial value leak fixed. 0x04/0x05/0xF4 reset handlers implemented then stripped (MCU never sends these commands — confirmation via UDP logging). **Gateway reachability check added** — non-blocking TCP connect to router IP (from DHCP lease) to catch stale `STATION_GOT_IP` after reboot. Default `wifi_check_interval` changed from 10s to 60s. |
+| 1.1.9 | Default `task_stats` turned off (HomeKit characteristic default `false`, init code sets `false`). Can be enabled via HomeKit app if needed. |
+| 1.1.10 | **OTA identity self-heal**: `standard_init()` re-anchors sysparam to the LCM's fixed area (0xF7000) and restores `ota_repo`/`ota_file`/`ota_version` if missing (e.g. after UDP factory reset). `DEVICE_MODEL` changed to `esp-homekit-wired-thermostat` (repo suffix, so `manufacturer/model` == the real GitHub repo). Bench device recovered to 1.1.10 via OTA alone. |
 
 ## Key Findings
 
@@ -75,6 +78,15 @@ Docker image: `espbuilder`, SDK_PATH: `/project/esp-open-rtos`. Run from `/Users
 ### Factory Reset / Recovery
 - **No physical button combo triggers factory reset** on BHT-002. Manual confirms factory reset is only via BecaSmart phone app (menu → Restore Manufacturer Defaults). `gpio_init()` in `main.c` is empty — no button handler was ever wired.
 - **LCM bootloader power-cycle method** relies on **rboot4lcm** (custom rboot fork). The thermostat uses `extras/rboot-ota` (standard rboot) in its build config. Whether rboot4lcm is installed on-device depends on original provisioning — unknown unless tested. Power-cycle thresholds: count 1–4 normal, 5–7 check update, 8–10 erase WiFi, 11–13 erase WiFi + LCM_beta, 14+ factory reset (default `count_step=3`).
+
+### OTA Identity Wipe (v1.1.9 factory reset → 1.1.10 self-heal)
+- The v1.1.9 UDP `FACTORY_RESET` (port 9876, password-protected) erases `SYSPARAMSECTOR` (0xF7000) + the next sector — wiping wifi creds **and** the OTA triad (`ota_repo`/`ota_file`/`ota_version`).
+- Symptom: after re-provisioning wifi (portal `/settings`), mDNS showed `md=model_unknown`, revision `0.0.0`, `c#=1`. Root cause: `ota_read_sysparam()` (ota-api.c:20) falls back to `manuf_unknown`/`model_unknown`/`0.0.0` when `ota_repo`/`ota_version` are absent.
+- Fix (v1.1.10, in shared `esp-homekit-common-functions` `standard_init()`):
+  1. `sysparam_init(0xF7000, 0)` re-anchor — the LCM always maintains a 2-sector area at 0xF7000 (creates/rebuilds on every boot, `life-cycle-manager/ota.c` `ota_read_rtc`); `app_main` may init at a flash-size-derived address on non-1MB devices.
+  2. `ota_sysparam_ensure(manufacturer, model, revision)` — write-if-missing restore of the triad (healthy devices: zero writes).
+- **`DEVICE_MODEL` must equal the repo suffix** (`esp-homekit-wired-thermostat`) so `manufacturer + "/" + model` == `maccoylton/esp-homekit-wired-thermostat` (the real repo).
+- Bench thermostat was already healable: its OTA keys had been restored during wifi re-provisioning through the portal, so it OTA'd to 1.1.10 on its own (no AP-portal recovery needed). mDNS verified correct model + revision `1.1.10` afterwards.
 
 ## Relevant Files
 

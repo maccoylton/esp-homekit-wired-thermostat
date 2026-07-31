@@ -12,9 +12,9 @@
 
 #define DEVICE_MANUFACTURER "maccoylton"
 #define DEVICE_NAME "wired-thermostat"
-#define DEVICE_MODEL "2"
+#define DEVICE_MODEL "esp-homekit-wired-thermostat"
 #define DEVICE_SERIAL "12345678"
-#define FW_VERSION "1.1.8"
+#define FW_VERSION "1.1.10"
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>
@@ -55,11 +55,12 @@ const int SAVE_DELAY = 3000;
 
 homekit_characteristic_t wifi_check_interval   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_CHECK_INTERVAL, 60, .setter=wifi_check_interval_set);
 /* checks the wifi is connected and flashes status led to indicated connected */
-homekit_characteristic_t task_stats   = HOMEKIT_CHARACTERISTIC_(CUSTOM_TASK_STATS, true , .setter=task_stats_set);
+homekit_characteristic_t task_stats   = HOMEKIT_CHARACTERISTIC_(CUSTOM_TASK_STATS, false, .setter=task_stats_set);
 homekit_characteristic_t wifi_reset   = HOMEKIT_CHARACTERISTIC_(CUSTOM_WIFI_RESET, false, .setter=wifi_reset_set);
 homekit_characteristic_t ota_beta     = HOMEKIT_CHARACTERISTIC_(CUSTOM_OTA_BETA, false, .setter=ota_beta_set);
 homekit_characteristic_t lcm_beta    = HOMEKIT_CHARACTERISTIC_(CUSTOM_LCM_BETA, false, .setter=lcm_beta_set);
 homekit_characteristic_t lcm_emergency = HOMEKIT_CHARACTERISTIC_(CUSTOM_LCM_EMERGENCY, false, .setter=lcm_emergency_set);
+homekit_characteristic_t factory_password = HOMEKIT_CHARACTERISTIC_(CUSTOM_SET_FACTORY_PASSWORD, .setter=factory_reset_set_password_callback);
 
 homekit_characteristic_t preserve_state   = HOMEKIT_CHARACTERISTIC_(CUSTOM_PRESERVE_STATE, false, .setter=preserve_state_set);
 homekit_characteristic_t log_level_ch     = HOMEKIT_CHARACTERISTIC_(CUSTOM_LOG_LEVEL, 2, .setter=log_level_set);
@@ -275,6 +276,7 @@ homekit_accessory_t *accessories[] = {
             &lcm_emergency,
             &task_stats,
             &wifi_check_interval,
+            &factory_password,
             NULL
         }),
         NULL
@@ -340,7 +342,7 @@ void accessory_init (void ){
     homekit_characteristic_notify (&target_state, target_state.value);
     tuya_thermostat_setPower( (target_state.value.int_value == 1 )? true : false , true);
     
-    task_stats.value.bool_value = true;
+    task_stats.value.bool_value = false;
     task_stats_set (task_stats.value);
     
 
@@ -356,6 +358,7 @@ void user_init(void) {
     standard_init (&name, &manufacturer, &model, &serial, &revision);
     gpio_init();
     wifi_config_init(DEVICE_NAME, NULL, on_wifi_ready);
+    factory_reset_cmd_start();
     
 }
 
