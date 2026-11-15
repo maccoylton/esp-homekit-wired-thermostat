@@ -14,7 +14,7 @@
 #define DEVICE_NAME "wired-thermostat"
 #define DEVICE_MODEL "esp-homekit-wired-thermostat"
 #define DEVICE_SERIAL "12345678"
-#define FW_VERSION "1.2.2"
+#define FW_VERSION "1.2.3"
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>
@@ -278,6 +278,14 @@ void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
             homekit_characteristic_bounds_check(&current_temperature);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&current_temperature, current_temperature.value);
+            set_current_state();
+            break;
+        case CHANGE_TYPE_CALL_FOR_HEAT:
+            /* the override was abandoned by the component (panel power off) */
+            LOG(LOG_ACTION, "%s: call for heat abandoned, switch cleared\n", __func__);
+            call_for_heat.value = HOMEKIT_BOOL(false);
+            homekit_characteristic_notify(&call_for_heat, call_for_heat.value);
+            sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             set_current_state();
             break;
         default:
