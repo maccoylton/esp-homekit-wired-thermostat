@@ -14,7 +14,7 @@
 #define DEVICE_NAME "wired-thermostat"
 #define DEVICE_MODEL "esp-homekit-wired-thermostat"
 #define DEVICE_SERIAL "12345678"
-#define FW_VERSION "1.2.3"
+#define FW_VERSION "1.2.4"
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>
