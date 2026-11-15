@@ -60,6 +60,19 @@ printf "FACTORY_RESET MySecret123" | nc -u -w1 192.168.1.208 9876
 
 ---
 
+## Call for Heat (v1.2.0)
+
+The accessory exposes a second service, a switch named **Call for Heat**, visible as a normal toggle in the Apple Home app.
+
+- **On**: forces heating on regardless of the thermostat's own temperature comparison or its target state (Off). The firmware powers the MCU and overrides its setpoint to the maximum (35°C) so the heating relay stays closed. `CurrentHeatingCoolingState` reports *Heating* while active.
+- **Off**: restores the normal target temperature and power state.
+- The switch is **latched**: it stays on until something (Home app, Home Assistant, a HomeKit automation) turns it off, and it survives a reboot (persisted to flash).
+- While active, the HomeKit target temperature is preserved (changes are saved but only pushed to the heater after the switch is cleared), and the physical panel's power button/knob cannot defeat the override.
+
+Intended for external controllers (e.g. Home Assistant or a schedule) to demand heat independently of the local temperature reading.
+
+---
+
 ## Device Info
 
 - **Hardware**: BHT-002 wired thermostat

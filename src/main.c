@@ -14,7 +14,7 @@
 #define DEVICE_NAME "wired-thermostat"
 #define DEVICE_MODEL "esp-homekit-wired-thermostat"
 #define DEVICE_SERIAL "12345678"
-#define FW_VERSION "1.1.10"
+#define FW_VERSION "1.2.2"
 
 #include <stdio.h>
 #include <espressif/esp_wifi.h>
@@ -75,6 +75,11 @@ homekit_characteristic_t revision     = HOMEKIT_CHARACTERISTIC_(FIRMWARE_REVISIO
 void set_target_temperature (homekit_value_t value);
 void set_target_state (homekit_value_t value);
 void set_external_temp_sensor (homekit_value_t value);
+void set_call_for_heat (homekit_value_t value);
+
+/* maximum setpoint pushed to the MCU while call for heat is active lives in
+ * tuya_thermostat (TUYA_THERMOSTAT_CALL_FOR_HEAT_SETPOINT) - the override state
+ * machine is handled entirely by the tuya_thermostat component */
 
 homekit_characteristic_t current_temperature = HOMEKIT_CHARACTERISTIC_( CURRENT_TEMPERATURE, 0, .min_step = (float[]) {0.5});
 
@@ -91,6 +96,11 @@ homekit_characteristic_t target_state        = HOMEKIT_CHARACTERISTIC_( TARGET_H
 //homekit_characteristic_t heating_threshold   = HOMEKIT_CHARACTERISTIC_( HEATING_THRESHOLD_TEMPERATURE, 15 );
 homekit_characteristic_t external_temp_sensor = HOMEKIT_CHARACTERISTIC_(CUSTOM_EXTERNALTEMP_SENSOR, false, .setter = set_external_temp_sensor);
 
+/* Call for heat - separate switch service so it is visible in the Apple Home app.
+ * Heating is on if the thermostat demands heat OR this switch is on. */
+homekit_characteristic_t call_for_heat_name = HOMEKIT_CHARACTERISTIC_(NAME, "Call for Heat");
+homekit_characteristic_t call_for_heat     = HOMEKIT_CHARACTERISTIC_(ON, false, .setter = set_call_for_heat);
+
 // The GPIO pin that is oconnected to the button on the wired thermostat controller.
 const int BUTTON_GPIO = 0;
 
@@ -101,24 +111,29 @@ int led_off_value = -1;
 uint8_t uart_port=0;
 
 void set_current_state(){
-    LOG(LOG_EVENT, "%s: target state: %d, current state: %d, target temp: %2.1f, current temp:%2.1f\n", __func__, target_state.value.int_value, current_state.value.int_value, target_temperature.value.float_value ,current_temperature.value.float_value);
-    switch (target_state.value.int_value){
-        case 0: /* off */
-            current_state.value = HOMEKIT_UINT8 (0);
-            break;
-        case 1: /* heat */
-        {
-            /* the BHT 002 doesn't have a curent state, so need to compare current and target temperate */
-            if ( current_temperature.value.float_value < (target_temperature.value.float_value) )
-                current_state.value = HOMEKIT_UINT8 (1);
-            else
+    LOG(LOG_EVENT, "%s: target state: %d, current state: %d, target temp: %2.1f, current temp:%2.1f, call for heat: %d\n", __func__, target_state.value.int_value, current_state.value.int_value, target_temperature.value.float_value ,current_temperature.value.float_value, call_for_heat.value.bool_value);
+    if (call_for_heat.value.bool_value) {
+        /* call for heat forces heating on regardless of target state or temperature */
+        current_state.value = HOMEKIT_UINT8 (1);
+    } else {
+        switch (target_state.value.int_value){
+            case 0: /* off */
                 current_state.value = HOMEKIT_UINT8 (0);
-            break;
+                break;
+            case 1: /* heat */
+            {
+                /* the BHT 002 doesn't have a curent state, so need to compare current and target temperate */
+                if ( current_temperature.value.float_value < (target_temperature.value.float_value) )
+                    current_state.value = HOMEKIT_UINT8 (1);
+                else
+                    current_state.value = HOMEKIT_UINT8 (0);
+                break;
+            }
+            case 2: /* cool */
+            case 3: /* auto */
+            default:
+                break;
         }
-        case 2: /* cool */
-        case 3: /* auto */
-        default:
-            break;
     }
     LOG(LOG_EVENT, "%s: New current state: %d\n", __func__, current_state.value.int_value);
     sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
@@ -139,6 +154,23 @@ void set_external_temp_sensor (homekit_value_t value){
     LOG(LOG_FLOW, "%s: end\n", __func__);
     
 }
+
+void set_call_for_heat (homekit_value_t value){
+    /* called when the iOS device (or automation) toggles the call for heat switch.
+     * the override itself (force power on, pin setpoint at the maximum, drop panel
+     * changes, ignore the MCU echo) is handled by the tuya_thermostat component */
+    LOG(LOG_ACTION, "%s: %s\n", __func__, value.bool_value ? "true" : "false");
+    call_for_heat.value = HOMEKIT_BOOL(value.bool_value);
+    sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
+    tuya_thermostat_setCallForHeat (call_for_heat.value.bool_value,
+                                    target_temperature.value.float_value,
+                                    (target_state.value.int_value == 1));
+    homekit_characteristic_notify(&call_for_heat, call_for_heat.value);
+    set_current_state();
+    /* if the call for heat has changed then the current state may have changed */
+    LOG(LOG_FLOW, "%s: end\n", __func__);
+}
+
 
 void set_target_temperature (homekit_value_t value){
     /* called when the IOS device updates the value */
@@ -162,9 +194,15 @@ void set_target_state (homekit_value_t value){
     switch ( (int) value.int_value)
     {
         case 0: /* off */
-            tuya_thermostat_setPower( false , true);
+            if (call_for_heat.value.bool_value) {
+                /* call for heat overrides off - record the state, keep power on,
+                 * power is restored when call for heat is cleared */
+                LOG(LOG_ACTION, "%s: Off requested but call for heat active - keeping power on\n", __func__);
+            } else {
+                tuya_thermostat_setPower( false , true);
+                LOG(LOG_ACTION, "%s: Off\n", __func__);
+            }
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
-            LOG(LOG_ACTION, "%s: Off\n", __func__);
             break;
         case 1: /* heat */
             tuya_thermostat_setPower( true , true);
@@ -197,6 +235,8 @@ void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
     switch (cmd){
         case CHANGE_TYPE_POWER:
             LOG(LOG_EVENT, "%s: power on: %d, target state:%d\n", __func__, powerOn, target_state.value.int_value);
+            /* call for heat power handling (force on, drop panel power-off, ignore
+             * the stale echo after clearing) is done in tuya_thermostat */
             target_state.value = HOMEKIT_UINT8(powerOn ? 1 : 0);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
             homekit_characteristic_notify(&target_state, target_state.value);
@@ -204,6 +244,8 @@ void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
             break;
         case CHANGE_TYPE_SETPOINT_TEMP:
             LOG(LOG_EVENT, "%s: setPoint: %f, target temperature: %f\n", __func__, setPointTemp, target_temperature.value.float_value);
+            /* the call for heat override never emits a setpoint change - the
+             * component drops the MCU echo and re-asserts the override itself */
             target_temperature.value = HOMEKIT_FLOAT(setPointTemp);
             homekit_characteristic_bounds_check(&target_temperature);
             sdk_os_timer_arm (&save_timer, SAVE_DELAY, 0 );
@@ -245,7 +287,7 @@ void tuya_thermostat_emitChange(TUYA_Thermostat_change_type_t cmd)
 
 
 homekit_accessory_t *accessories[] = {
-    HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_thermostat, .services=(homekit_service_t*[]){
+    HOMEKIT_ACCESSORY(.id=1, .config_number=2, .category=homekit_accessory_category_thermostat, .services=(homekit_service_t*[]){
         HOMEKIT_SERVICE(ACCESSORY_INFORMATION, .characteristics=(homekit_characteristic_t*[]){
             &name,
             &manufacturer,
@@ -279,6 +321,11 @@ homekit_accessory_t *accessories[] = {
             &factory_password,
             NULL
         }),
+        HOMEKIT_SERVICE(SWITCH, .characteristics=(homekit_characteristic_t*[]){
+            &call_for_heat_name,
+            &call_for_heat,
+            NULL
+        }),
         NULL
     }),
     NULL
@@ -303,6 +350,14 @@ void recover_from_reset (int reason){
     homekit_characteristic_notify (&target_state, target_state.value);
     tuya_thermostat_setPower( (target_state.value.int_value == 1 )? true : false , true);
     
+    load_characteristic_from_flash(&call_for_heat);
+    homekit_characteristic_notify (&call_for_heat, call_for_heat.value);
+    if (call_for_heat.value.bool_value) {
+        tuya_thermostat_setCallForHeat (true,
+                                        target_temperature.value.float_value,
+                                        (target_state.value.int_value == 1));
+    }
+    
 }
 
 void save_characteristics ( ){
@@ -311,11 +366,19 @@ void save_characteristics ( ){
     save_characteristic_to_flash (&target_temperature, target_temperature.value);
     save_characteristic_to_flash (&target_state, target_state.value);
     save_characteristic_to_flash (&external_temp_sensor, external_temp_sensor.value);
+    save_characteristic_to_flash (&call_for_heat, call_for_heat.value);
     save_characteristic_to_flash(&preserve_state, preserve_state.value);
     save_characteristic_to_flash(&wifi_check_interval, wifi_check_interval.value);
     
     /* do this hear to stop temperature bounce */
-    tuya_thermostat_setSetPointTemp (target_temperature.value.float_value, true);
+    if (call_for_heat.value.bool_value) {
+        /* setpoint is overridden while call for heat is active - save the new
+         * target to flash but do not push it to the MCU, it is restored when
+         * call for heat is cleared */
+        LOG(LOG_EVENT, "%s: skipping MCU setpoint update, call for heat active\n", __func__);
+    } else {
+        tuya_thermostat_setSetPointTemp (target_temperature.value.float_value, true);
+    }
 }
 
 
@@ -341,6 +404,16 @@ void accessory_init (void ){
     load_characteristic_from_flash(&target_state);
     homekit_characteristic_notify (&target_state, target_state.value);
     tuya_thermostat_setPower( (target_state.value.int_value == 1 )? true : false , true);
+    
+    load_characteristic_from_flash(&call_for_heat);
+    homekit_characteristic_notify (&call_for_heat, call_for_heat.value);
+    if (call_for_heat.value.bool_value) {
+        /* latched call for heat survived reboot - re-assert power and setpoint override */
+        tuya_thermostat_setCallForHeat (true,
+                                        target_temperature.value.float_value,
+                                        (target_state.value.int_value == 1));
+        LOG(LOG_ACTION, "%s: call for heat active after boot - heating forced on\n", __func__);
+    }
     
     task_stats.value.bool_value = false;
     task_stats_set (task_stats.value);

@@ -31,6 +31,9 @@ HOMEKIT_SMALL = 0
 HOMEKIT_SPI_FLASH_BASE_ADDR ?= 0x8c000
 
 EXTRA_CFLAGS += -I../.. -DHOMEKIT_SHORT_APPLE_UUIDS
+# halve lwIP receive window (default 4*MSS=5840) to save ~2.9KB heap per
+# HomeKit client connection; HomeKit messages are small, no functional impact
+EXTRA_CFLAGS += -DTCP_WND=2920
 #EXTRA_CFLAGS += -DHOMEKIT_DEBUG
 EXTRA_CFLAGS += -DHOMEKIT_OVERCLOCK_PAIR_VERIFY
 EXTRA_CFLAGS += -DHOMEKIT_OVERCLOCK_PAIR_SETUP
